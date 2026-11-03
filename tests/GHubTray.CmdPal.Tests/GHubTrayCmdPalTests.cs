@@ -2,6 +2,8 @@ using GHubTray.Core;
 using Microsoft.CommandPalette.Extensions;
 using Microsoft.CommandPalette.Extensions.Toolkit;
 using System.Text.Json.Nodes;
+using System.Runtime.InteropServices;
+using System.Collections.Concurrent;
 using Xunit;
 
 namespace GHubTray.CmdPal.Tests;
@@ -58,7 +60,7 @@ public sealed class GHubTrayCmdPalTests
             PowerState.Discharging,
             0x01)));
         var store = new TelemetryStatusStore(reader);
-        var provider = new GHubTrayCommandsProvider(store);
+        using var provider = new GHubTrayCommandsProvider(store);
 
         await store.RefreshAsync();
 
@@ -230,7 +232,7 @@ public sealed class GHubTrayCmdPalTests
         {
             ReceiverProductIds = [0xC539]
         }));
-        var provider = new GHubTrayCommandsProvider(store);
+        using var provider = new GHubTrayCommandsProvider(store);
 
         await store.RefreshAsync();
 
@@ -239,7 +241,7 @@ public sealed class GHubTrayCmdPalTests
     }
 
     [Fact]
-    public async Task RefreshCommandWaitsForNewSnapshotAndNotifiesTheSurface()
+    public async Task RefreshCommandWaitsForNewSnapshotAndPublishesOneUpdate()
     {
         var reader = new MutableReader(Snapshot(new DeviceTelemetry(
             "G703 LIGHTSPEED Wireless Gaming Mouse",
@@ -262,17 +264,20 @@ public sealed class GHubTrayCmdPalTests
             null,
             PowerState.Discharging,
             0x01));
-        var notified = false;
-        var command = new TelemetryRefreshCommand(store, () => notified = true);
+        using var subscription = store.Subscribe();
+        var before = await subscription.Updates.ReadAsync();
+        var command = new TelemetryRefreshCommand(store);
 
         command.Invoke();
 
-        Assert.True(notified);
+        var after = await subscription.Updates.ReadAsync();
+        Assert.Equal(before.Revision + 1, after.Revision);
+        Assert.False(subscription.Updates.TryRead(out _));
         Assert.Equal(15, Assert.Single(store.GetStatus().Devices).Percent);
     }
 
     [Fact]
-    public async Task DockRefreshUpdatesTheExistingItemInPlace()
+    public async Task DockRefreshReplacesTheItemAndNotifiesTheExistingPage()
     {
         var reader = new MutableReader(Snapshot(new DeviceTelemetry(
             "G703 LIGHTSPEED Wireless Gaming Mouse",
@@ -284,10 +289,16 @@ public sealed class GHubTrayCmdPalTests
             PowerState.Discharging,
             0x01)));
         var store = new TelemetryStatusStore(reader);
-        var dock = new GHubTrayDockBand(store);
         await store.RefreshAsync();
+        var dock = new GHubTrayDockBand(store);
 
         var originalItem = Assert.Single(dock.Items, item => item.Title == "28%");
+        var originalPage = Assert.IsAssignableFrom<IListPage>(dock.Command);
+        var updated = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        originalPage.ItemsChanged += (_, _) =>
+        {
+            if (originalPage.GetItems()[0].Title == "15%") updated.TrySetResult();
+        };
         reader.Snapshot = Snapshot(new DeviceTelemetry(
             "G703 LIGHTSPEED Wireless Gaming Mouse",
             0xC539,
@@ -302,9 +313,104 @@ public sealed class GHubTrayCmdPalTests
         dock.RefreshItems();
 
         var refreshedItem = Assert.Single(dock.Items, item => item.Title == "15%");
-        Assert.Same(originalItem, refreshedItem);
+        Assert.NotSame(originalItem, refreshedItem);
+        Assert.Same(originalPage, dock.Command);
+        await updated.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal("G703", refreshedItem.Subtitle);
         Assert.NotNull(refreshedItem.Icon);
+    }
+
+    [Fact]
+    public async Task DockRefreshesAutomaticallyFromTheProviderTimer()
+    {
+        var reader = new MutableReader(Snapshot(new DeviceTelemetry(
+            "G703 LIGHTSPEED Wireless Gaming Mouse",
+            0xC539,
+            1,
+            0x1004,
+            28,
+            null,
+            PowerState.Discharging,
+            0x01)));
+        var store = new TelemetryStatusStore(reader);
+        var provider = new GHubTrayCommandsProvider(
+            store,
+            new GHubTraySettingsStore(),
+            TimeSpan.FromMilliseconds(20));
+
+        try
+        {
+            await store.RefreshAsync();
+            var dock = Assert.IsType<GHubTrayDockBand>(Assert.Single(provider.GetDockBands()));
+            var originalItem = Assert.Single(dock.Items, item => item.Title == "28%");
+
+            reader.Snapshot = Snapshot(new DeviceTelemetry(
+                "G703 LIGHTSPEED Wireless Gaming Mouse",
+                0xC539,
+                1,
+                0x1004,
+                15,
+                null,
+                PowerState.Discharging,
+                0x01));
+
+            var deadline = DateTime.UtcNow.AddSeconds(2);
+            while (DateTime.UtcNow < deadline
+                && dock.Items.FirstOrDefault()?.Title != "15%")
+            {
+                await Task.Delay(10);
+            }
+
+            var refreshedItem = Assert.Single(dock.Items, item => item.Title == "15%");
+            Assert.NotSame(originalItem, refreshedItem);
+        }
+        finally
+        {
+            provider.Dispose();
+        }
+    }
+
+    [Theory]
+    [InlineData(unchecked((int)0x80010108))]
+    [InlineData(unchecked((int)0x800706BA))]
+    [InlineData(unchecked((int)0x80004005))]
+    public async Task DockRecoversFromNoResponseDespiteAFailingEarlierHost(int hresult)
+    {
+        var reader = new MutableReader(new LogitechReadSnapshot(1, []));
+        var store = new TelemetryStatusStore(reader);
+        await store.RefreshAsync();
+        using var provider = new GHubTrayCommandsProvider(store);
+        var dock = Assert.IsType<GHubTrayDockBand>(Assert.Single(provider.GetDockBands()));
+        Assert.Equal("デバイス応答なし", Assert.Single(dock.Items).Subtitle);
+        var page = Assert.IsAssignableFrom<IListPage>(dock.Command);
+        var failedCalls = 0;
+        var receivedTitles = new ConcurrentQueue<string>();
+        page.ItemsChanged += (_, _) =>
+        {
+            Interlocked.Increment(ref failedCalls);
+            throw new COMException("Previous host callback failed", hresult);
+        };
+        page.ItemsChanged += (_, _) => receivedTitles.Enqueue(Assert.Single(page.GetItems()).Title);
+        var providerNotifications = 0;
+        provider.ItemsChanged += (_, _) => providerNotifications++;
+
+        foreach (var percent in new[] { 51, 50 })
+        {
+            reader.Snapshot = Snapshot(new DeviceTelemetry(
+                "G703 LIGHTSPEED Wireless Gaming Mouse", 0xC539, 1, 0x1004,
+                percent, null, PowerState.Discharging, 0x01));
+            await store.RefreshAsync();
+            var deadline = DateTime.UtcNow.AddSeconds(5);
+            while (!receivedTitles.Contains($"{percent}%") && DateTime.UtcNow < deadline)
+                await Task.Delay(10);
+            Assert.Contains($"{percent}%", receivedTitles);
+        }
+
+        if (hresult != unchecked((int)0x80004005)) Assert.Equal(1, failedCalls);
+        else Assert.True(failedCalls >= 1);
+        Assert.Equal(0, providerNotifications);
+        Assert.Equal("G703", Assert.Single(page.GetItems()).Subtitle);
+        Assert.NotNull(Assert.Single(page.GetItems()).Icon);
     }
 
     private static LogitechReadSnapshot Snapshot(params DeviceTelemetry[] devices) =>

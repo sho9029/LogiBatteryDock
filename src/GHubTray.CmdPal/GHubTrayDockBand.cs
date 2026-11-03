@@ -4,11 +4,16 @@ using Microsoft.CommandPalette.Extensions.Toolkit;
 
 namespace GHubTray.CmdPal;
 
-internal sealed class GHubTrayDockBand : WrappedDockItem
+internal sealed class GHubTrayDockBand : CommandItem, IDisposable
 {
     private const string BandId = "ghubtray.devices";
     private readonly TelemetryStatusStore _statusStore;
     private readonly GHubTraySettingsStore _settingsStore;
+    private readonly DockListPage _page;
+    private readonly TelemetryNotificationScope? _scope;
+
+    internal IListItem[] Items => _page.GetItems();
+    internal TelemetryPageNotifications Notifications => _page.Notifications;
 
     public GHubTrayDockBand()
         : this(new TelemetryStatusStore(), new GHubTraySettingsStore())
@@ -22,55 +27,32 @@ internal sealed class GHubTrayDockBand : WrappedDockItem
 
     internal GHubTrayDockBand(
         TelemetryStatusStore statusStore,
-        GHubTraySettingsStore settingsStore)
-        : base(CreateItems(statusStore, settingsStore), BandId, "GHubTray")
+        GHubTraySettingsStore settingsStore,
+        TelemetryNotificationScope? scope = null)
     {
         _statusStore = statusStore;
         _settingsStore = settingsStore;
+        _scope = scope;
+        _page = new DockListPage(statusStore, () => CreateItems(_statusStore, _settingsStore, RefreshItems, _scope), scope);
+        Command = _page;
+        Title = "GHubTray";
         Icon = new IconInfo("\uE7F4");
         RefreshItems();
+        _statusStore.EnsureInitialRefresh();
     }
 
     internal void RefreshItems()
     {
-        var refreshedItems = CreateItems(_statusStore, _settingsStore, RefreshItems);
-        if (TryUpdateExistingItems(refreshedItems))
-        {
-            return;
-        }
-
-        Items = refreshedItems;
+        _page.NotifyStatusChanged();
     }
 
-    private bool TryUpdateExistingItems(IListItem[] refreshedItems)
-    {
-        if (Items.Length != refreshedItems.Length)
-        {
-            return false;
-        }
-
-        for (var index = 0; index < Items.Length; index++)
-        {
-            if (Items[index] is not ListItem current
-                || refreshedItems[index] is not ListItem refreshed)
-            {
-                return false;
-            }
-
-            current.Command = refreshed.Command;
-            current.Title = refreshed.Title;
-            current.Subtitle = refreshed.Subtitle;
-            current.Icon = refreshed.Icon;
-            current.MoreCommands = refreshed.MoreCommands;
-        }
-
-        return true;
-    }
+    public void Dispose() => _page.Dispose();
 
     private static IListItem[] CreateItems(
         TelemetryStatusStore statusStore,
         GHubTraySettingsStore settingsStore,
-        Action? onRefreshCompleted = null)
+        Action? onRefreshCompleted = null,
+        TelemetryNotificationScope? scope = null)
     {
         statusStore.EnsureInitialRefresh();
         var status = statusStore.GetStatus();
@@ -114,7 +96,7 @@ internal sealed class GHubTrayDockBand : WrappedDockItem
             ?? status.Devices[0];
         items.Add(CreateStatusItem(
             statusStore,
-            new ListItem(new TelemetryDeviceInfoPage(statusStore, selectedDevice))
+            new ListItem(new TelemetryDeviceInfoPage(statusStore, selectedDevice, scope))
             {
                 Title = CmdPalDisplayFormatter.DeviceDockTitle(selectedDevice),
                 Subtitle = CmdPalDisplayFormatter.DeviceDockSubtitle(selectedDevice),
@@ -136,6 +118,7 @@ internal sealed class GHubTrayDockBand : WrappedDockItem
         TelemetryDeviceStatus? selectedDevice,
         Action? onRefreshCompleted)
     {
+        item.Icon ??= CmdPalDisplayFormatter.UnavailableBatteryIcon;
         var selectionCallback = onRefreshCompleted ?? (() => { });
         var commands = devices
             .Select(device => new CommandContextItem(new DockDeviceSelectionCommand(
@@ -150,14 +133,27 @@ internal sealed class GHubTrayDockBand : WrappedDockItem
             })
             .Cast<ICommandContextItem>()
             .ToList();
-        commands.Add(new CommandContextItem(new TelemetryRefreshCommand(
-            statusStore,
-            onRefreshCompleted))
+        commands.Add(new CommandContextItem(new TelemetryRefreshCommand(statusStore))
         {
             Title = "更新",
             Subtitle = "各機器の残量を再確認"
         });
         item.MoreCommands = [.. commands];
         return item;
+    }
+
+    private sealed class DockListPage : TelemetryListPage
+    {
+        private readonly Func<IListItem[]> _getItems;
+
+        internal DockListPage(TelemetryStatusStore store, Func<IListItem[]> getItems, TelemetryNotificationScope? scope)
+            : base(store, scope)
+        {
+            _getItems = getItems;
+            Id = BandId;
+            Name = "GHubTray";
+        }
+
+        public override IListItem[] GetItems() => _getItems();
     }
 }

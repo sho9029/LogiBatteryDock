@@ -54,6 +54,8 @@ internal static class CmdPalDisplayFormatter
             : BatteryIcons[level];
     }
 
+    public static IconInfo UnavailableBatteryIcon => BatteryUnknownIcon;
+
     public static string DeviceCommandId(string prefix, TelemetryDeviceStatus device) =>
         $"{prefix}.{device.Id}";
 

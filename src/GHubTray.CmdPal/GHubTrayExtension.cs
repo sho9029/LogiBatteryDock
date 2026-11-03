@@ -18,5 +18,9 @@ public sealed class GHubTrayExtension : IExtension, IDisposable
         _ => null
     };
 
-    public void Dispose() => _disposed.Set();
+    public void Dispose()
+    {
+        _provider.Dispose();
+        _disposed.Set();
+    }
 }

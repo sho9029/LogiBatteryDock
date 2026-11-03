@@ -5,7 +5,7 @@ namespace GHubTray.Core;
 public sealed record GHubTraySettings
 {
     public const int CurrentSchemaVersion = 1;
-    public const int DefaultRefreshIntervalSeconds = 30;
+    public const int DefaultRefreshIntervalSeconds = 60;
     public const int MinRefreshIntervalSeconds = 10;
     public const int MaxRefreshIntervalSeconds = 3600;
 

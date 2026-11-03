@@ -3,10 +3,11 @@ using Microsoft.CommandPalette.Extensions;
 using Microsoft.CommandPalette.Extensions.Toolkit;
 using System.Globalization;
 using System.Text.Json.Nodes;
+using Windows.Foundation;
 
 namespace GHubTray.CmdPal;
 
-internal sealed class TelemetryDeviceInfoPage : ContentPage
+internal sealed class TelemetryDeviceInfoPage : ContentPage, IContentPage, IDisposable
 {
     private const string CardTemplate = """
         {
@@ -93,22 +94,29 @@ internal sealed class TelemetryDeviceInfoPage : ContentPage
 
     private readonly TelemetryStatusStore _statusStore;
     private readonly TelemetryDeviceStatus _initialDevice;
-    private readonly FormContent _formContent = new();
+    private readonly TelemetryPageNotifications _notifications;
+    internal TelemetryPageNotifications Notifications => _notifications;
+
+    public new event TypedEventHandler<object, IItemsChangedEventArgs>? ItemsChanged
+    {
+        add { if (value is not null) _notifications.Add(value); }
+        remove { if (value is not null) _notifications.Remove(value); }
+    }
 
     internal TelemetryDeviceInfoPage(
         TelemetryStatusStore statusStore,
-        TelemetryDeviceStatus device)
+        TelemetryDeviceStatus device,
+        TelemetryNotificationScope? scope = null)
     {
         _statusStore = statusStore;
+        _notifications = new(statusStore, this, scope);
         _initialDevice = device;
         Icon = CmdPalDisplayFormatter.DeviceBatteryIcon(device);
         Title = CmdPalDisplayFormatter.DeviceTitle(device.Name);
         Id = CmdPalDisplayFormatter.DeviceCommandId("ghubtray.device.info", device);
         Commands =
         [
-            new CommandContextItem(new TelemetryRefreshCommand(
-                _statusStore,
-                UpdateContent))
+            new CommandContextItem(new TelemetryRefreshCommand(_statusStore))
             {
                 Title = "更新",
                 Subtitle = "この機器の残量を再確認"
@@ -121,17 +129,23 @@ internal sealed class TelemetryDeviceInfoPage : ContentPage
         _statusStore.EnsureInitialRefresh();
         var device = _statusStore.GetStatus().Devices
             .FirstOrDefault(current => current.Id == _initialDevice.Id)
-            ?? _initialDevice;
+            ?? _initialDevice with
+            {
+                IsStale = true,
+                BatteryText = "現在値は未確認",
+                PowerText = "現在は未確認"
+            };
 
-        _formContent.TemplateJson = CardTemplate;
-        _formContent.DataJson = CreateData(device).ToJsonString();
-        return [_formContent];
+        // Published forms are immutable. Mutating an old form here would invoke
+        // its host PropChanged subscribers on a pull/refresh command's stack.
+        return [new FormContent
+        {
+            TemplateJson = CardTemplate,
+            DataJson = CreateData(device).ToJsonString()
+        }];
     }
 
-    private void UpdateContent()
-    {
-        _ = GetContent();
-    }
+    public void Dispose() => _notifications.Dispose();
 
     private static JsonObject CreateData(TelemetryDeviceStatus device) => new()
     {

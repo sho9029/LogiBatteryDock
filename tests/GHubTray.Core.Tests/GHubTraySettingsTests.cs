@@ -13,7 +13,7 @@ public sealed class GHubTraySettingsTests
 
         var settings = store.Load();
 
-        Assert.Equal(30, settings.RefreshIntervalSeconds);
+        Assert.Equal(60, settings.RefreshIntervalSeconds);
         Assert.False(settings.StartWithWindows);
         Assert.False(store.HadLoadError);
     }
@@ -49,7 +49,7 @@ public sealed class GHubTraySettingsTests
 
         var settings = store.Load();
 
-        Assert.Equal(30, settings.RefreshIntervalSeconds);
+        Assert.Equal(60, settings.RefreshIntervalSeconds);
         Assert.True(store.HadLoadError);
         Assert.Equal("{ not valid json", File.ReadAllText(path));
     }
@@ -65,7 +65,7 @@ public sealed class GHubTraySettingsTests
         var settings = store.Load();
 
         Assert.Equal(GHubTraySettings.CurrentSchemaVersion, settings.SchemaVersion);
-        Assert.Equal(30, settings.RefreshIntervalSeconds);
+        Assert.Equal(60, settings.RefreshIntervalSeconds);
         Assert.True(store.HadLoadError);
     }
 

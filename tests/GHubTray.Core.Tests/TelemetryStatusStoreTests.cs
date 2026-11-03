@@ -133,6 +133,38 @@ public sealed class TelemetryStatusStoreTests
             ReceiverKeys = ["pid:C539"]
         };
 
+    [Fact]
+    public async Task UnreadSubscriberCannotBlockReadsOrAccumulateHistory()
+    {
+        var reader = new FakeReader(Snapshot());
+        var store = new TelemetryStatusStore(reader);
+        using var stalled = store.Subscribe();
+        for (var i = 0; i < 100; i++)
+            await store.RefreshAsync().WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(100, reader.ReadCount);
+        Assert.False(store.IsRefreshing);
+        Assert.True(stalled.Updates.TryRead(out var latest));
+        Assert.Equal(100, latest!.Revision);
+        Assert.False(stalled.Updates.TryRead(out _));
+        using var reconnected = store.Subscribe();
+        var replay = await reconnected.Updates.ReadAsync();
+        Assert.Equal(latest, replay);
+        Assert.Equal(100, reader.ReadCount);
+    }
+
+    [Fact]
+    public async Task DisposedSubscriptionIsCompletedAndDoesNotReceiveFurtherUpdates()
+    {
+        var store = new TelemetryStatusStore(new FakeReader(Snapshot()));
+        var subscription = store.Subscribe();
+        Assert.True(subscription.Updates.TryRead(out _));
+        subscription.Dispose();
+        await store.RefreshAsync();
+        await subscription.Updates.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(subscription.Updates.TryRead(out _));
+    }
+
     private sealed class FakeReader : ITelemetryReader
     {
         private readonly IReadOnlyList<LogitechReadSnapshot> _snapshots;

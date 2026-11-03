@@ -1,3 +1,5 @@
+using System.Threading.Channels;
+
 namespace GHubTray.Core;
 
 /// <summary>
@@ -14,13 +16,34 @@ public sealed class TelemetryStatusStore
     private IReadOnlyList<MergedDeviceTelemetry> _states = Array.Empty<MergedDeviceTelemetry>();
     private Task? _refreshTask;
     private bool _hasCompletedRead;
+    private readonly List<TelemetryStatusSubscription> _subscriptions = [];
+    private long _revision;
 
     public TelemetryStatusStore(ITelemetryReader? reader = null)
     {
         _reader = reader ?? new GHubAwareTelemetryReader();
     }
 
-    public event EventHandler? StatusChanged;
+    // Publishing a snapshot must never invoke frontend or remote host code.
+    // Each subscriber holds only the latest update, including an initial replay.
+    public TelemetryStatusSubscription Subscribe()
+    {
+        lock (_gate)
+        {
+            var subscription = new TelemetryStatusSubscription(RemoveSubscription);
+            _subscriptions.Add(subscription);
+            subscription.Publish(new(_revision, _status));
+            return subscription;
+        }
+    }
+
+    private void RemoveSubscription(TelemetryStatusSubscription subscription)
+    {
+        lock (_gate)
+        {
+            _subscriptions.Remove(subscription);
+        }
+    }
 
     public bool IsRefreshing
     {
@@ -63,7 +86,7 @@ public sealed class TelemetryStatusStore
                 return false;
             }
 
-            _refreshTask = RefreshCoreAsync(CancellationToken.None);
+            StartRefresh(CancellationToken.None);
             return true;
         }
     }
@@ -77,18 +100,27 @@ public sealed class TelemetryStatusStore
                 return active;
             }
 
-            _refreshTask = RefreshCoreAsync(cancellationToken);
-            return _refreshTask;
+            return StartRefresh(cancellationToken);
         }
     }
 
-    private async Task RefreshCoreAsync(CancellationToken cancellationToken)
+    private Task StartRefresh(CancellationToken cancellationToken)
+    {
+        // Install the completion before scheduling: even an immediate reader
+        // cannot finish and then have its completed task stored as active.
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _refreshTask = completion.Task;
+        _ = Task.Run(() => RefreshCore(cancellationToken, completion));
+        return completion.Task;
+    }
+
+    private void RefreshCore(CancellationToken cancellationToken, TaskCompletionSource completion)
     {
         try
         {
-            var snapshot = await Task.Run(
-                () => _reader.ReadSnapshot(cancellationToken),
-                cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            var snapshot = _reader.ReadSnapshot(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             var states = _stateMerger.Merge(snapshot);
             SetStatus(TelemetryStatusDocumentFactory.CreateStatus(snapshot, states), states);
         }
@@ -106,6 +138,7 @@ public sealed class TelemetryStatusStore
             lock (_gate)
             {
                 _refreshTask = null;
+                completion.TrySetResult();
             }
         }
     }
@@ -114,21 +147,17 @@ public sealed class TelemetryStatusStore
         TelemetryStatusDocument status,
         IReadOnlyList<MergedDeviceTelemetry> states)
     {
-        EventHandler? handler;
         lock (_gate)
         {
             _status = status;
             _states = states;
             _hasCompletedRead = true;
-            handler = StatusChanged;
+            PublishStatus();
         }
-
-        NotifyStatusChanged(handler);
     }
 
     private void SetError(string error)
     {
-        EventHandler? handler;
         lock (_gate)
         {
             _status = new TelemetryStatusDocument(
@@ -139,27 +168,16 @@ public sealed class TelemetryStatusStore
                 error);
             _states = Array.Empty<MergedDeviceTelemetry>();
             _hasCompletedRead = true;
-            handler = StatusChanged;
+            PublishStatus();
         }
-
-        NotifyStatusChanged(handler);
     }
 
-    private void NotifyStatusChanged(EventHandler? handler)
+    private void PublishStatus()
     {
-        if (handler is null)
+        var update = new TelemetryStatusUpdate(++_revision, _status);
+        foreach (var subscription in _subscriptions)
         {
-            return;
-        }
-
-        try
-        {
-            handler.Invoke(this, EventArgs.Empty);
-        }
-        catch (Exception exception)
-        {
-            System.Diagnostics.Debug.WriteLine(
-                $"Telemetry status notification failed: {exception.GetType().Name}");
+            subscription.Publish(update);
         }
     }
 
@@ -169,4 +187,33 @@ public sealed class TelemetryStatusStore
         Array.Empty<TelemetryDeviceStatus>(),
         Array.Empty<TelemetryFailureStatus>(),
         "not_checked");
+}
+
+public sealed record TelemetryStatusUpdate(long Revision, TelemetryStatusDocument Status);
+
+public sealed class TelemetryStatusSubscription : IDisposable
+{
+    private readonly Action<TelemetryStatusSubscription> _remove;
+    private readonly Channel<TelemetryStatusUpdate> _channel = Channel.CreateBounded<TelemetryStatusUpdate>(
+        new BoundedChannelOptions(1)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+            AllowSynchronousContinuations = false
+        });
+    private int _disposed;
+
+    internal TelemetryStatusSubscription(Action<TelemetryStatusSubscription> remove) => _remove = remove;
+
+    public ChannelReader<TelemetryStatusUpdate> Updates => _channel.Reader;
+
+    internal void Publish(TelemetryStatusUpdate update) => _channel.Writer.TryWrite(update);
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) == 0)
+        {
+            _remove(this);
+            _channel.Writer.TryComplete();
+        }
+    }
 }

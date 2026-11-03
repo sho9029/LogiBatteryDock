@@ -4,25 +4,26 @@ using Microsoft.CommandPalette.Extensions.Toolkit;
 
 namespace GHubTray.CmdPal;
 
-internal sealed class GHubTrayPage : ListPage
+internal sealed class GHubTrayPage : TelemetryListPage
 {
     private readonly TelemetryStatusStore _statusStore;
+    private readonly TelemetryNotificationScope? _scope;
 
     public GHubTrayPage()
         : this(new TelemetryStatusStore())
     {
     }
 
-    internal GHubTrayPage(TelemetryStatusStore statusStore)
+    internal GHubTrayPage(TelemetryStatusStore statusStore, TelemetryNotificationScope? scope = null)
+        : base(statusStore, scope)
     {
         _statusStore = statusStore;
+        _scope = scope;
         Icon = new IconInfo("\uE7F4");
         Title = "GHubTray";
         Name = "状態を表示";
         Id = "ghubtray.status";
     }
-
-    internal void NotifyStatusChanged() => RaiseItemsChanged();
 
     public override IListItem[] GetItems()
     {
@@ -51,7 +52,7 @@ internal sealed class GHubTrayPage : ListPage
         }
 
         items.AddRange(status.Devices.Select(device =>
-            CreateStatusItem(new ListItem(new TelemetryDeviceInfoPage(_statusStore, device))
+            CreateStatusItem(new ListItem(new TelemetryDeviceInfoPage(_statusStore, device, _scope))
             {
                 Title = CmdPalDisplayFormatter.DeviceTitle(device.Name),
                 Subtitle = CmdPalDisplayFormatter.DeviceSubtitle(device)
@@ -73,9 +74,7 @@ internal sealed class GHubTrayPage : ListPage
     {
         item.MoreCommands =
         [
-            new CommandContextItem(new TelemetryRefreshCommand(
-                _statusStore,
-                NotifyStatusChanged))
+            new CommandContextItem(new TelemetryRefreshCommand(_statusStore))
             {
                 Title = "更新",
                 Subtitle = "各機器の残量を再確認"
