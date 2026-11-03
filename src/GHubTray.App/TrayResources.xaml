@@ -6,6 +6,7 @@
 
     <local:TrayViewModel x:Key="TrayViewModel" />
     <XamlUICommand x:Key="RefreshCommand" Label="更新" />
+    <XamlUICommand x:Key="SettingsCommand" Label="設定" />
     <XamlUICommand x:Key="ExitCommand" Label="終了" />
 
     <tb:TaskbarIcon
@@ -66,6 +67,7 @@
         <tb:TaskbarIcon.ContextFlyout>
             <MenuFlyout>
                 <MenuFlyoutItem Command="{StaticResource RefreshCommand}" Text="更新" Icon="Refresh" />
+                <MenuFlyoutItem Command="{StaticResource SettingsCommand}" Text="設定" Icon="Setting" />
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem Command="{StaticResource ExitCommand}" Text="終了" />
             </MenuFlyout>
