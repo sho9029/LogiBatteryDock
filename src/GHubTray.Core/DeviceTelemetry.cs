@@ -19,6 +19,7 @@ public sealed record DeviceTelemetry(
     PowerState PowerState,
     byte RawStatus)
 {
+    public string ReceiverKey { get; init; } = string.Empty;
     public bool IsExactPercentage => Percent is not null && BatteryFeature is 0x1000 or 0x1004;
     public DateTimeOffset ObservedAt { get; init; } = DateTimeOffset.UtcNow;
 }
@@ -26,6 +27,7 @@ public sealed record DeviceTelemetry(
 public sealed record LogitechReadSnapshot(int ReceiverCount, IReadOnlyList<DeviceTelemetry> Devices)
 {
     public IReadOnlyList<int> ReceiverProductIds { get; init; } = Array.Empty<int>();
+    public IReadOnlyList<string> ReceiverKeys { get; init; } = Array.Empty<string>();
     public IReadOnlyList<DeviceReadFailure> Failures { get; init; } = Array.Empty<DeviceReadFailure>();
     public DateTimeOffset CheckedAt { get; init; } = DateTimeOffset.UtcNow;
 }
@@ -37,7 +39,8 @@ public enum DeviceReadFailureKind
     NoResponsiveDevice,
     BatteryFeatureUnsupported,
     BatteryReadFailed,
-    InvalidResponse
+    InvalidResponse,
+    ScanTimedOut
 }
 
 public sealed record DeviceReadFailure(

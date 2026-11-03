@@ -1,10 +1,14 @@
 using HidSharp;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace GHubTray.Core;
 
 public sealed class LogitechDeviceReader
 {
     private const int LogitechVendorId = 0x046D;
+
+    public TimeSpan ScanTimeout { get; set; } = TimeSpan.FromSeconds(8);
 
     public IReadOnlyList<DeviceTelemetry> ReadAll(CancellationToken cancellationToken = default)
         => ReadSnapshot(cancellationToken).Devices;
@@ -13,6 +17,8 @@ public sealed class LogitechDeviceReader
     {
         var results = new List<DeviceTelemetry>();
         var failures = new List<DeviceReadFailure>();
+        var deadline = new ScanDeadline(ScanTimeout);
+        var scanTimedOut = false;
         HidDevice[] interfaces;
         try
         {
@@ -21,6 +27,11 @@ public sealed class LogitechDeviceReader
                 // collections can pass this size filter, but cannot be mistaken for a device.
                 .Where(IsHidppLongInterface)
                 .ToArray();
+            cancellationToken.ThrowIfCancellationRequested();
+            if (deadline.IsExpired)
+            {
+                scanTimedOut = true;
+            }
         }
         catch (Exception exception) when (IsExpectedDeviceException(exception))
         {
@@ -31,6 +42,11 @@ public sealed class LogitechDeviceReader
         foreach (var device in interfaces)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (deadline.IsExpired)
+            {
+                scanTimedOut = true;
+                break;
+            }
             HidStream? stream;
             try
             {
@@ -48,6 +64,7 @@ public sealed class LogitechDeviceReader
 
             using (stream)
             {
+                var receiverKey = GetReceiverKey(device);
                 var session = new HidppSession(new HidSharpChannel(stream));
                 var responsive = false;
                 var batteryFeatureFound = false;
@@ -55,12 +72,22 @@ public sealed class LogitechDeviceReader
                 foreach (var index in CandidateIndexes())
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+                    if (deadline.IsExpired)
+                    {
+                        scanTimedOut = true;
+                        break;
+                    }
                     if (!session.Ping(index, cancellationToken))
                     {
                         continue;
                     }
                     responsive = true;
 
+                    if (deadline.IsExpired)
+                    {
+                        scanTimedOut = true;
+                        break;
+                    }
                     var feature = session.ResolveBatteryFeature(index, cancellationToken);
                     if (feature is null)
                     {
@@ -68,7 +95,17 @@ public sealed class LogitechDeviceReader
                     }
                     batteryFeatureFound = true;
 
+                    if (deadline.IsExpired)
+                    {
+                        scanTimedOut = true;
+                        break;
+                    }
                     var name = session.ReadName(index, cancellationToken) ?? $"Logitech HID++ device {index:X2}";
+                    if (deadline.IsExpired)
+                    {
+                        scanTimedOut = true;
+                        break;
+                    }
                     var reply = session.ReadBattery(index, feature.Value.Id, feature.Value.Index, cancellationToken);
                     if (reply is null)
                     {
@@ -80,7 +117,7 @@ public sealed class LogitechDeviceReader
                         name, device.ProductID, index, feature.Value.Id, reply, out var telemetry, out var error)
                         && telemetry is not null)
                     {
-                        results.Add(telemetry);
+                        results.Add(telemetry with { ReceiverKey = receiverKey });
                         batteryReadSucceeded = true;
                     }
                     else
@@ -89,28 +126,51 @@ public sealed class LogitechDeviceReader
                     }
                 }
 
-                if (!responsive)
+                if (!scanTimedOut && deadline.IsExpired)
+                {
+                    scanTimedOut = true;
+                }
+                if (!scanTimedOut && !responsive)
                 {
                     failures.Add(new(device.ProductID, null, DeviceReadFailureKind.NoResponsiveDevice, "no candidate device answered HID++ ping"));
                 }
-                else if (!batteryFeatureFound)
+                else if (!scanTimedOut && !batteryFeatureFound)
                 {
                     failures.Add(new(device.ProductID, null, DeviceReadFailureKind.BatteryFeatureUnsupported, "responsive device exposes no supported battery feature"));
                 }
-                else if (!batteryReadSucceeded)
+                else if (!scanTimedOut && !batteryReadSucceeded)
                 {
                     failures.Add(new(device.ProductID, null, DeviceReadFailureKind.BatteryReadFailed, "no valid battery reading was obtained"));
                 }
             }
+
+            if (scanTimedOut)
+            {
+                break;
+            }
+        }
+
+        if (scanTimedOut)
+        {
+            failures.Add(new(
+                0,
+                null,
+                DeviceReadFailureKind.ScanTimedOut,
+                $"scan exceeded {ScanTimeout.TotalSeconds:0.###} seconds"));
         }
 
         var receiverIds = interfaces
             .Select(device => device.ProductID)
             .Distinct()
             .ToArray();
-        return new(receiverIds.Length, results)
+        var receiverKeys = interfaces
+            .Select(GetReceiverKey)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        return new(receiverKeys.Length, results)
         {
             ReceiverProductIds = receiverIds,
+            ReceiverKeys = receiverKeys,
             Failures = failures
         };
     }
@@ -144,6 +204,25 @@ public sealed class LogitechDeviceReader
         {
             return false;
         }
+    }
+
+    private static string GetReceiverKey(HidDevice device)
+    {
+        var productId = device.ProductID;
+        try
+        {
+            var path = device.DevicePath;
+            if (!string.IsNullOrWhiteSpace(path))
+            {
+                var digest = SHA256.HashData(Encoding.UTF8.GetBytes(path));
+                return $"path:{Convert.ToHexString(digest.AsSpan(0, 8))}";
+            }
+        }
+        catch (Exception exception) when (IsExpectedDeviceException(exception))
+        {
+        }
+
+        return $"pid:{productId:X4}";
     }
 
     private static bool IsExpectedDeviceException(Exception exception) =>

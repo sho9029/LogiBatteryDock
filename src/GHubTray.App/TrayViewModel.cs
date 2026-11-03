@@ -72,7 +72,7 @@ public sealed class TrayViewModel : INotifyPropertyChanged
                     ? "GHubTray — デバイス応答なし"
                     : liveDevice.IsExactPercentage
                         ? $"{liveDevice.Name}: {liveDevice.Percent}%"
-                        : $"{liveDevice.Name}: {ToPowerText(liveDevice.PowerState)}";
+                        : $"{liveDevice.Name}: {TelemetryDisplayFormatter.ToPowerText(liveDevice.PowerState)}";
             }
             else
             {
@@ -108,25 +108,12 @@ public sealed class TrayViewModel : INotifyPropertyChanged
     private static DeviceCard ToCard(MergedDeviceTelemetry state)
     {
         var device = state.Telemetry;
-        var batteryValue = device.IsExactPercentage ? $"{device.Percent}%" : "残量は未提供";
-        var powerText = ToPowerText(device.PowerState);
-        var technicalText = device.Millivolts is int mv
-            ? $"{mv} mV  •  HID++ 0x{device.BatteryFeature:X4}  •  flags 0x{device.RawStatus:X2}  •  取得 {device.ObservedAt.ToLocalTime():HH:mm:ss}"
-            : $"HID++ 0x{device.BatteryFeature:X4}  •  status 0x{device.RawStatus:X2}  •  取得 {device.ObservedAt.ToLocalTime():HH:mm:ss}";
+        var display = TelemetryDisplayFormatter.Format(device, state.IsStale);
 
-        if (state.IsStale)
-        {
-            var lastKnownValue = device.IsExactPercentage
-                ? $"最終取得値 {batteryValue}"
-                : "最終取得時も残量は未提供";
-            batteryValue = "現在値は未確認";
-            powerText = "応答なし（スリープまたは圏外）";
-            technicalText = $"{lastKnownValue} • {technicalText} • 最終取得値";
-        }
-
-        return new(device.Name, batteryValue, powerText, technicalText)
+        return new(device.Name, display.BatteryText, display.PowerText, display.TechnicalText)
         {
             IsStale = state.IsStale,
+            ReceiverKey = device.ReceiverKey,
             ReceiverProductId = device.ReceiverProductId,
             DeviceIndex = device.DeviceIndex
         };
@@ -143,17 +130,9 @@ public sealed class TrayViewModel : INotifyPropertyChanged
                 DeviceReadFailureKind.BatteryFeatureUnsupported => "電池機能なし",
                 DeviceReadFailureKind.BatteryReadFailed => "電池値取得失敗",
                 DeviceReadFailureKind.InvalidResponse => "不正応答",
+                DeviceReadFailureKind.ScanTimedOut => "取得時間切れ",
                 _ => "取得失敗"
             }).Distinct());
-
-    private static string ToPowerText(PowerState state) => state switch
-    {
-        PowerState.Charging => "充電中",
-        PowerState.Full => "満充電",
-        PowerState.ExternalPower => "外部電源あり",
-        PowerState.Discharging => "接続中",
-        _ => "状態不明"
-    };
 
     private void Set(ref string field, string value, [CallerMemberName] string? name = null)
     {
@@ -181,6 +160,7 @@ public sealed class DeviceCard
     public string PowerText { get; set; } = string.Empty;
     public string TechnicalText { get; set; } = string.Empty;
     public bool IsStale { get; set; }
+    public string ReceiverKey { get; set; } = string.Empty;
     public int ReceiverProductId { get; set; }
     public byte DeviceIndex { get; set; }
 }

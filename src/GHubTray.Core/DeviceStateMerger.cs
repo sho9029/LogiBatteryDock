@@ -1,6 +1,6 @@
 namespace GHubTray.Core;
 
-public readonly record struct DeviceIdentity(int ReceiverProductId, byte DeviceIndex);
+public readonly record struct DeviceIdentity(string ReceiverKey, int ReceiverProductId, byte DeviceIndex);
 
 public sealed record MergedDeviceTelemetry(DeviceTelemetry Telemetry, bool IsStale);
 
@@ -14,13 +14,16 @@ public sealed class DeviceStateMerger
 
     public IReadOnlyList<MergedDeviceTelemetry> Merge(LogitechReadSnapshot snapshot)
     {
-        var receiverIds = ReceiverIds(snapshot);
+        var receiverPresence = ReceiverPresence(snapshot);
         var liveKeys = new HashSet<DeviceIdentity>();
         var merged = new List<MergedDeviceTelemetry>(snapshot.Devices.Count + _lastKnown.Count);
 
         foreach (var telemetry in snapshot.Devices)
         {
-            var key = new DeviceIdentity(telemetry.ReceiverProductId, telemetry.DeviceIndex);
+            var key = new DeviceIdentity(
+                ReceiverKey(telemetry),
+                telemetry.ReceiverProductId,
+                telemetry.DeviceIndex);
             _lastKnown[key] = telemetry;
             if (liveKeys.Add(key))
             {
@@ -36,7 +39,10 @@ public sealed class DeviceStateMerger
                 continue;
             }
 
-            if (receiverIds.Contains(pair.Key.ReceiverProductId))
+            var receiverPresent = receiverPresence.Keys.Count > 0
+                ? receiverPresence.Keys.Contains(pair.Key.ReceiverKey)
+                : receiverPresence.ProductIds.Contains(pair.Key.ReceiverProductId);
+            if (receiverPresent)
             {
                 merged.Add(new(pair.Value, IsStale: true));
             }
@@ -54,18 +60,34 @@ public sealed class DeviceStateMerger
         return merged;
     }
 
-    private HashSet<int> ReceiverIds(LogitechReadSnapshot snapshot)
+    private (HashSet<string> Keys, HashSet<int> ProductIds) ReceiverPresence(LogitechReadSnapshot snapshot)
     {
-        if (snapshot.ReceiverProductIds.Count > 0)
+        if (snapshot.ReceiverKeys.Count > 0)
         {
-            return snapshot.ReceiverProductIds.ToHashSet();
+            return (
+                snapshot.ReceiverKeys.ToHashSet(StringComparer.Ordinal),
+                new HashSet<int>());
         }
 
-        // Snapshots created by older callers do not have IDs. If they still
-        // report a receiver, retain known IDs conservatively instead of
-        // claiming that every previously seen device was unplugged.
-        return snapshot.ReceiverCount > 0
-            ? _lastKnown.Keys.Select(key => key.ReceiverProductId).ToHashSet()
-            : [];
+        if (snapshot.ReceiverProductIds.Count > 0)
+        {
+            return (
+                new HashSet<string>(StringComparer.Ordinal),
+                snapshot.ReceiverProductIds.ToHashSet());
+        }
+
+        // Snapshots created by older callers do not have receiver identity. If
+        // they still report a receiver, retain known product IDs conservatively
+        // instead of claiming that every previously seen device was unplugged.
+        return (
+            new HashSet<string>(StringComparer.Ordinal),
+            snapshot.ReceiverCount > 0
+                ? _lastKnown.Keys.Select(key => key.ReceiverProductId).ToHashSet()
+                : new HashSet<int>());
     }
+
+    private static string ReceiverKey(DeviceTelemetry telemetry) =>
+        string.IsNullOrEmpty(telemetry.ReceiverKey)
+            ? $"pid:{telemetry.ReceiverProductId:X4}"
+            : telemetry.ReceiverKey;
 }

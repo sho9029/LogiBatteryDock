@@ -63,13 +63,46 @@ public sealed class DeviceStateMergerTests
         Assert.Equal("Mouse", state.Telemetry.Name);
     }
 
+    [Fact]
+    public void SameProductIdDifferentReceiverKeysRemainSeparate()
+    {
+        var first = new LogitechReadSnapshot(
+            2,
+            [
+                Telemetry("Mouse A", 0xC539, 1, 0x1001, 4000, receiverKey: "path:A"),
+                Telemetry("Mouse B", 0xC539, 1, 0x1001, 4050, receiverKey: "path:B")
+            ])
+        {
+            ReceiverProductIds = [0xC539],
+            ReceiverKeys = ["path:A", "path:B"]
+        };
+        var second = new LogitechReadSnapshot(
+            2,
+            [first.Devices[0]])
+        {
+            ReceiverProductIds = [0xC539],
+            ReceiverKeys = ["path:A", "path:B"]
+        };
+
+        var merger = new DeviceStateMerger();
+        _ = merger.Merge(first);
+        var merged = merger.Merge(second);
+
+        Assert.Equal(2, merged.Count);
+        Assert.False(merged[0].IsStale);
+        Assert.Equal("path:A", merged[0].Telemetry.ReceiverKey);
+        Assert.True(merged[1].IsStale);
+        Assert.Equal("path:B", merged[1].Telemetry.ReceiverKey);
+    }
+
     private static DeviceTelemetry Telemetry(
         string name,
         int receiverProductId,
         byte deviceIndex,
         ushort batteryFeature,
         int millivolts,
-        int? percent = null) =>
+        int? percent = null,
+        string receiverKey = "") =>
         new(
             name,
             receiverProductId,
@@ -80,6 +113,7 @@ public sealed class DeviceStateMergerTests
             PowerState.Discharging,
             0)
         {
+            ReceiverKey = receiverKey,
             ObservedAt = DateTimeOffset.Parse("2026-09-02T00:00:00Z")
         };
 }
