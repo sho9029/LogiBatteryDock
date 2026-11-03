@@ -62,6 +62,14 @@ public sealed class TrayViewModel : INotifyPropertyChanged
         }
     }
 
+    public async Task RefreshAfterResumeAsync(CancellationToken cancellationToken = default)
+    {
+        // Remain on the UI context and let any old card update finish first.
+        await WaitForRefreshAsync();
+        if (!cancellationToken.IsCancellationRequested)
+            await RefreshAsync(cancellationToken);
+    }
+
     private async Task RefreshCoreAsync(CancellationToken cancellationToken)
     {
         try

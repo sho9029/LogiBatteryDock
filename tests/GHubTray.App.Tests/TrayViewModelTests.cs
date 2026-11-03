@@ -7,6 +7,20 @@ namespace GHubTray.App.Tests;
 public sealed class TrayViewModelTests
 {
     [Fact]
+    public async Task ResumeWaitsForOldCardUpdateThenDisplaysFreshRead()
+    {
+        using var reader = new BlockingResumeReader();
+        var viewModel = new TrayViewModel(new TelemetryStatusStore(reader));
+        var old = viewModel.RefreshAsync();
+        await reader.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var resume = viewModel.RefreshAfterResumeAsync();
+        reader.Release.Set();
+        await Task.WhenAll(old, resume).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(2, reader.ReadCount);
+        Assert.Equal("46%", Assert.Single(viewModel.Devices).BatteryValue);
+    }
+
+    [Fact]
     public async Task RefreshUsesItsOwnReaderAndUpdatesCards()
     {
         var reader = new FakeReader(Snapshot(new DeviceTelemetry(
@@ -147,6 +161,25 @@ public sealed class TrayViewModelTests
                 _snapshots.Count - 1);
             return _snapshots[index];
         }
+    }
+
+    private sealed class BlockingResumeReader : ITelemetryReader, IDisposable
+    {
+        internal readonly TaskCompletionSource Started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly ManualResetEventSlim Release = new();
+        internal int ReadCount;
+        public LogitechReadSnapshot ReadSnapshot(CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Increment(ref ReadCount) == 1)
+            {
+                Started.TrySetResult();
+                if (!Release.Wait(TimeSpan.FromSeconds(5), cancellationToken)) throw new TimeoutException();
+                return new(0, []);
+            }
+            return Snapshot(new DeviceTelemetry("G703", 0xC539, 1, 0x1004,
+                46, null, PowerState.Discharging, 0));
+        }
+        public void Dispose() { Release.Set(); Release.Dispose(); }
     }
 
     private sealed class ThrowingReader : ITelemetryReader

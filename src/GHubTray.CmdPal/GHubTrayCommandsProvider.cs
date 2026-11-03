@@ -13,6 +13,7 @@ public sealed class GHubTrayCommandsProvider : CommandProvider, IDisposable
     private readonly PeriodicTimer _refreshTimer;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Task _refreshLoop;
+    private readonly WindowsResumeNotification? _resumeNotification;
     private readonly TelemetryNotificationScope _notifications = new();
     private int _disposed;
 
@@ -49,7 +50,10 @@ public sealed class GHubTrayCommandsProvider : CommandProvider, IDisposable
         var interval = refreshInterval ?? settingsStore.Load().RefreshInterval;
         _refreshTimer = new PeriodicTimer(interval);
         _refreshLoop = RunRefreshLoopAsync(_lifetime.Token);
+        _resumeNotification = WindowsResumeNotification.TryCreate(() => _ = RefreshAfterResumeAsync());
     }
+
+    internal Task RefreshAfterResumeAsync() => _statusStore.RefreshAfterResumeAsync(_lifetime.Token);
 
     public override ICommandItem[] TopLevelCommands() => _commands;
 
@@ -74,6 +78,7 @@ public sealed class GHubTrayCommandsProvider : CommandProvider, IDisposable
         }
 
         _lifetime.Cancel();
+        _resumeNotification?.Dispose();
         _refreshTimer.Dispose();
         _page.Dispose();
         _dockBand.Dispose();

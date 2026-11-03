@@ -14,6 +14,7 @@ public sealed partial class App : Application
     private TaskbarIcon? _trayIcon;
     private TrayViewModel? _viewModel;
     private DispatcherTimer? _timer;
+    private WindowsResumeNotification? _resumeNotification;
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private readonly GHubTraySettingsStore _settingsStore = new();
     private readonly WindowsStartupRegistration _startupRegistration = new();
@@ -60,6 +61,11 @@ public sealed partial class App : Application
         _timer.Tick += async (_, _) => await _viewModel.RefreshAsync(lifetimeToken);
         _timer.Start();
         _ = _viewModel.RefreshAsync(lifetimeToken);
+        _resumeNotification = WindowsResumeNotification.TryCreate(() =>
+            _dispatcherQueue.TryEnqueue(async () =>
+            {
+                if (!_exiting) await _viewModel.RefreshAfterResumeAsync(lifetimeToken);
+            }));
 
         var viewModel = _viewModel;
         _pipeServer = new(
@@ -78,6 +84,7 @@ public sealed partial class App : Application
         _exiting = true;
         _timer?.Stop();
         _lifetimeCancellation.Cancel();
+        _resumeNotification?.Dispose();
         try
         {
             if (_pipeServer is not null)

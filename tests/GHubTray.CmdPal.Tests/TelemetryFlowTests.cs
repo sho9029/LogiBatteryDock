@@ -12,6 +12,33 @@ namespace GHubTray.CmdPal.Tests;
 
 public sealed class TelemetryFlowTests(ITestOutputHelper output)
 {
+    [Fact]
+    public async Task ResumeUpdatesPageAndDockWithoutTrayProcess()
+    {
+        var reader = new MutableReader { Missing = true };
+        var store = new TelemetryStatusStore(reader);
+        await store.RefreshAsync();
+        using var provider = new GHubTrayCommandsProvider(
+            store, new GHubTraySettingsStore(), TimeSpan.FromHours(1));
+        var page = Assert.IsType<GHubTrayPage>(provider.TopLevelCommands()[0].Command);
+        var dock = Assert.IsType<GHubTrayDockBand>(provider.GetDockBands()[0]);
+        var pageUpdated = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var dockUpdated = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        page.ItemsChanged += (_, _) =>
+        {
+            if (page.GetItems()[0].Subtitle.Contains("46%")) pageUpdated.TrySetResult();
+        };
+        Assert.IsAssignableFrom<IListPage>(dock.Command).ItemsChanged += (_, _) =>
+        {
+            if (dock.Items[0].Title == "46%") dockUpdated.TrySetResult();
+        };
+        reader.Missing = false;
+        reader.Percent = 46;
+        await provider.RefreshAfterResumeAsync();
+        await Task.WhenAll(pageUpdated.Task, dockUpdated.Task).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(2, reader.ReadCount);
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]

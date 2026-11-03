@@ -104,6 +104,20 @@ public sealed class TelemetryStatusStore
         }
     }
 
+    // A read spanning sleep cannot satisfy a resume request. Wait for it, then
+    // share any newer normal read or start exactly one new read. No retries.
+    public async Task RefreshAfterResumeAsync(CancellationToken cancellationToken = default)
+    {
+        Task? previous;
+        lock (_gate)
+        {
+            previous = _refreshTask;
+        }
+        if (previous is not null) await previous.ConfigureAwait(false);
+        if (!cancellationToken.IsCancellationRequested)
+            await RefreshAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     private Task StartRefresh(CancellationToken cancellationToken)
     {
         // Install the completion before scheduling: even an immediate reader
