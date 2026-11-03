@@ -10,8 +10,15 @@ public sealed class TrayViewModel : INotifyPropertyChanged
     private readonly LogitechDeviceReader _reader = new();
     private readonly DeviceStateMerger _stateMerger = new();
     private readonly object _refreshGate = new();
+    private readonly object _statusGate = new();
     private bool _refreshing;
     private Task? _activeRefresh;
+    private TelemetryStatusDocument _status = new(
+        DateTimeOffset.UtcNow,
+        0,
+        Array.Empty<TelemetryDeviceStatus>(),
+        Array.Empty<TelemetryFailureStatus>(),
+        "not_checked");
     private string _updatedText = string.Empty;
     private string _toolTip = "GHubTray — 検索中";
 
@@ -23,6 +30,14 @@ public sealed class TrayViewModel : INotifyPropertyChanged
     ];
     public string UpdatedText { get => _updatedText; private set => Set(ref _updatedText, value); }
     public string ToolTip { get => _toolTip; private set => Set(ref _toolTip, value); }
+
+    public TelemetryStatusDocument GetStatus()
+    {
+        lock (_statusGate)
+        {
+            return _status;
+        }
+    }
 
     public Task RefreshAsync(CancellationToken cancellationToken = default)
     {
@@ -59,6 +74,7 @@ public sealed class TrayViewModel : INotifyPropertyChanged
         {
             var snapshot = await Task.Run(() => _reader.ReadSnapshot(cancellationToken));
             var states = _stateMerger.Merge(snapshot);
+            SetStatus(TelemetryIpcProtocol.CreateStatus(snapshot, states));
             var liveDevice = states.FirstOrDefault(state => !state.IsStale)?.Telemetry;
             if (states.Count > 0)
             {
@@ -91,6 +107,7 @@ public sealed class TrayViewModel : INotifyPropertyChanged
         }
         catch (Exception)
         {
+            SetStatusError("read_failed");
             Devices.Clear();
             Devices.Add(new("読み取りに失敗", "—", "状態を取得できない", "次回更新または手動更新で再試行"));
             ToolTip = "GHubTray — 読み取り失敗";
@@ -117,6 +134,22 @@ public sealed class TrayViewModel : INotifyPropertyChanged
             ReceiverProductId = device.ReceiverProductId,
             DeviceIndex = device.DeviceIndex
         };
+    }
+
+    private void SetStatus(TelemetryStatusDocument status)
+    {
+        lock (_statusGate)
+        {
+            _status = status;
+        }
+    }
+
+    private void SetStatusError(string error)
+    {
+        lock (_statusGate)
+        {
+            _status = _status with { Error = error };
+        }
     }
 
     private static string FailureSummary(LogitechReadSnapshot snapshot) =>

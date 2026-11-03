@@ -1,7 +1,9 @@
 using H.NotifyIcon;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
 using GHubTray.Core;
+using System.Runtime.InteropServices;
 
 namespace GHubTray.App;
 
@@ -17,6 +19,8 @@ public sealed partial class App : Application
     private readonly WindowsStartupRegistration _startupRegistration = new();
     private GHubTraySettings _settings = new();
     private SettingsWindow? _settingsWindow;
+    private DispatcherQueue? _dispatcherQueue;
+    private TelemetryPipeServer? _pipeServer;
     private bool _initialized;
     private bool _exiting;
 
@@ -36,6 +40,7 @@ public sealed partial class App : Application
         }
 
         _viewModel = (TrayViewModel)Resources["TrayViewModel"];
+        _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         _settings = GHubTraySettingsValidator.Normalize(_settingsStore.Load());
         var lifetimeToken = _lifetimeCancellation.Token;
 
@@ -55,6 +60,13 @@ public sealed partial class App : Application
         _timer.Tick += async (_, _) => await _viewModel.RefreshAsync(lifetimeToken);
         _timer.Start();
         _ = _viewModel.RefreshAsync(lifetimeToken);
+
+        var viewModel = _viewModel;
+        _pipeServer = new(
+            viewModel.GetStatus,
+            RefreshFromPipeAsync,
+            OpenTrayFromPipe);
+        _pipeServer.Start();
     }
 
     private async void ExitApplication()
@@ -68,6 +80,11 @@ public sealed partial class App : Application
         _lifetimeCancellation.Cancel();
         try
         {
+            if (_pipeServer is not null)
+            {
+                await _pipeServer.StopAsync();
+                _pipeServer = null;
+            }
             if (_viewModel is not null)
             {
                 await _viewModel.WaitForRefreshAsync();
@@ -112,6 +129,85 @@ public sealed partial class App : Application
         {
             _timer.Interval = normalized.RefreshInterval;
         }
+    }
+
+    private async Task RefreshFromPipeAsync(CancellationToken cancellationToken)
+    {
+        async Task RefreshOnUiThread()
+        {
+            if (_viewModel is not null)
+            {
+                await _viewModel.RefreshAsync(cancellationToken);
+                await _viewModel.WaitForRefreshAsync();
+            }
+        }
+
+        if (_dispatcherQueue?.HasThreadAccess == true)
+        {
+            await RefreshOnUiThread();
+            return;
+        }
+
+        if (_dispatcherQueue is null)
+        {
+            throw new InvalidOperationException("UI dispatcher is unavailable.");
+        }
+
+        var completion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_dispatcherQueue.TryEnqueue(async () =>
+        {
+            try
+            {
+                await RefreshOnUiThread();
+                completion.SetResult();
+            }
+            catch (Exception exception)
+            {
+                completion.SetException(exception);
+            }
+        }))
+        {
+            throw new InvalidOperationException("UI dispatcher rejected the refresh request.");
+        }
+
+        await completion.Task.WaitAsync(cancellationToken);
+    }
+
+    private void OpenTrayFromPipe()
+    {
+        if (_dispatcherQueue?.HasThreadAccess == true)
+        {
+            ShowTrayPopup();
+            return;
+        }
+
+        _dispatcherQueue?.TryEnqueue(ShowTrayPopup);
+    }
+
+    private void ShowTrayPopup()
+    {
+        if (_trayIcon is null)
+        {
+            return;
+        }
+
+        _trayIcon.ShowTrayPopup(GetCursorPosition());
+    }
+
+    private static System.Drawing.Point GetCursorPosition() =>
+        GetCursorPos(out var point)
+            ? new System.Drawing.Point(point.X, point.Y)
+            : new System.Drawing.Point();
+
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out NativePoint point);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
     }
 
     private static bool TryAcquireSingleInstance()
