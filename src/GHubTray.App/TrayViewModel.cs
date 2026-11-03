@@ -7,20 +7,20 @@ namespace GHubTray.App;
 
 public sealed class TrayViewModel : INotifyPropertyChanged
 {
-    private readonly LogitechDeviceReader _reader = new();
-    private readonly DeviceStateMerger _stateMerger = new();
+    private readonly TelemetryStatusStore _statusStore;
     private readonly object _refreshGate = new();
-    private readonly object _statusGate = new();
     private bool _refreshing;
     private Task? _activeRefresh;
-    private TelemetryStatusDocument _status = new(
-        DateTimeOffset.UtcNow,
-        0,
-        Array.Empty<TelemetryDeviceStatus>(),
-        Array.Empty<TelemetryFailureStatus>(),
-        "not_checked");
     private string _updatedText = string.Empty;
     private string _toolTip = "GHubTray — 検索中";
+
+    public TrayViewModel()
+        : this(new TelemetryStatusStore())
+    {
+    }
+
+    internal TrayViewModel(TelemetryStatusStore statusStore) =>
+        _statusStore = statusStore;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -31,13 +31,7 @@ public sealed class TrayViewModel : INotifyPropertyChanged
     public string UpdatedText { get => _updatedText; private set => Set(ref _updatedText, value); }
     public string ToolTip { get => _toolTip; private set => Set(ref _toolTip, value); }
 
-    public TelemetryStatusDocument GetStatus()
-    {
-        lock (_statusGate)
-        {
-            return _status;
-        }
-    }
+    public TelemetryStatusDocument GetStatus() => _statusStore.GetStatus();
 
     public Task RefreshAsync(CancellationToken cancellationToken = default)
     {
@@ -72,9 +66,23 @@ public sealed class TrayViewModel : INotifyPropertyChanged
     {
         try
         {
-            var snapshot = await Task.Run(() => _reader.ReadSnapshot(cancellationToken));
-            var states = _stateMerger.Merge(snapshot);
-            SetStatus(TelemetryIpcProtocol.CreateStatus(snapshot, states));
+            await _statusStore.RefreshAsync(cancellationToken);
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            var status = _statusStore.GetStatus();
+            var states = _statusStore.GetMergedStates();
+            if (status.Error == "read_failed")
+            {
+                Devices.Clear();
+                Devices.Add(new("読み取りに失敗", "—", "状態を取得できない", "次回更新または手動更新で再試行"));
+                ToolTip = "GHubTray — 読み取り失敗";
+                UpdatedText = $"更新失敗 {DateTime.Now:HH:mm:ss}";
+                return;
+            }
+
             var liveDevice = states.FirstOrDefault(state => !state.IsStale)?.Telemetry;
             if (states.Count > 0)
             {
@@ -93,21 +101,20 @@ public sealed class TrayViewModel : INotifyPropertyChanged
             else
             {
                 Devices.Clear();
-                Devices.Add(snapshot.ReceiverCount > 0
-                    ? new("Logitech受信機", "—", "デバイス応答なし", FailureSummary(snapshot))
+                Devices.Add(status.ReceiverCount > 0
+                    ? new("Logitech受信機", "—", "デバイス応答なし", FailureSummary(status))
                     : new("Logitechデバイスなし", "—", "受信機を確認できない", "HID++インターフェイスなし"));
-                ToolTip = snapshot.ReceiverCount > 0
+                ToolTip = status.ReceiverCount > 0
                     ? "GHubTray — 受信機あり / デバイス応答なし"
                     : "GHubTray — デバイスなし";
             }
-            UpdatedText = $"確認 {snapshot.CheckedAt.ToLocalTime():HH:mm:ss}";
+            UpdatedText = $"確認 {status.CheckedAt.ToLocalTime():HH:mm:ss}";
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
         }
         catch (Exception)
         {
-            SetStatusError("read_failed");
             Devices.Clear();
             Devices.Add(new("読み取りに失敗", "—", "状態を取得できない", "次回更新または手動更新で再試行"));
             ToolTip = "GHubTray — 読み取り失敗";
@@ -136,26 +143,10 @@ public sealed class TrayViewModel : INotifyPropertyChanged
         };
     }
 
-    private void SetStatus(TelemetryStatusDocument status)
-    {
-        lock (_statusGate)
-        {
-            _status = status;
-        }
-    }
-
-    private void SetStatusError(string error)
-    {
-        lock (_statusGate)
-        {
-            _status = _status with { Error = error };
-        }
-    }
-
-    private static string FailureSummary(LogitechReadSnapshot snapshot) =>
-        snapshot.Failures.Count == 0
+    private static string FailureSummary(TelemetryStatusDocument status) =>
+        status.Failures.Count == 0
             ? "スリープまたは圏外"
-            : string.Join(" / ", snapshot.Failures.Select(f => f.Kind switch
+            : string.Join(" / ", status.Failures.Select(f => f.Kind switch
             {
                 DeviceReadFailureKind.OpenFailed => "HIDを開けない",
                 DeviceReadFailureKind.EnumerationFailed => "HID列挙失敗",

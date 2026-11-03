@@ -1,0 +1,1 @@
+GHubTray Command Palette extension.

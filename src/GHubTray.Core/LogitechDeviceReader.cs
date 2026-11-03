@@ -4,7 +4,7 @@ using System.Text;
 
 namespace GHubTray.Core;
 
-public sealed class LogitechDeviceReader
+public sealed class LogitechDeviceReader : ITelemetryReader
 {
     private const int LogitechVendorId = 0x046D;
 

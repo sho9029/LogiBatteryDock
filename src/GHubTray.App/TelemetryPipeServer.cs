@@ -125,20 +125,35 @@ internal sealed class TelemetryPipeServer
         TelemetryIpcRequest request,
         CancellationToken cancellationToken)
     {
-        switch (request.Command)
+        try
         {
-            case TelemetryIpcProtocol.GetStatusCommand:
-                return TelemetryIpcProtocol.CreateSuccessResponse(request, _getStatus());
-            case TelemetryIpcProtocol.RefreshCommand:
-                await _refresh(cancellationToken);
-                return TelemetryIpcProtocol.CreateSuccessResponse(request, _getStatus());
-            case TelemetryIpcProtocol.OpenTrayCommand:
-                _openTray();
-                return TelemetryIpcProtocol.CreateSuccessResponse(request, _getStatus());
-            default:
-                return TelemetryIpcProtocol.CreateErrorResponse(
-                    "command_unsupported",
-                    request.RequestId);
+            switch (request.Command)
+            {
+                case TelemetryIpcProtocol.GetStatusCommand:
+                    return TelemetryIpcProtocol.CreateSuccessResponse(request, _getStatus());
+                case TelemetryIpcProtocol.RefreshCommand:
+                    await _refresh(cancellationToken);
+                    return TelemetryIpcProtocol.CreateSuccessResponse(request, _getStatus());
+                case TelemetryIpcProtocol.OpenTrayCommand:
+                    _openTray();
+                    return TelemetryIpcProtocol.CreateSuccessResponse(request, _getStatus());
+                default:
+                    return TelemetryIpcProtocol.CreateErrorResponse(
+                        "command_unsupported",
+                        request.RequestId);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"GHubTray IPC command failed: {exception.GetType().Name}");
+            return TelemetryIpcProtocol.CreateErrorResponse(
+                "command_failed",
+                request.RequestId);
         }
     }
 
