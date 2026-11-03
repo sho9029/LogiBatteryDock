@@ -7,9 +7,58 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\")).Path
 $project = Join-Path $repoRoot "src\GHubTray.CmdPal\GHubTray.CmdPal.csproj"
+$manifestPath = Join-Path $repoRoot "src\GHubTray.CmdPal\Package.appxmanifest"
 $packagesRoot = Join-Path $repoRoot "src\GHubTray.CmdPal\AppPackages"
 
+function Update-PackageVersion([string]$path) {
+    $manifest = Get-Content -LiteralPath $path -Raw
+    $identity = [regex]::Match(
+        $manifest,
+        '<Identity\b[^>]*\bVersion="(?<version>\d+\.\d+\.\d+\.\d+)"')
+    if (-not $identity.Success) {
+        throw "Package identity version was not found: $path"
+    }
+
+    $sourceVersion = [version]$identity.Groups['version'].Value
+    $installed = Get-AppxPackage -Name "GHubTrayCmdPal" -ErrorAction SilentlyContinue |
+        Sort-Object Version -Descending |
+        Select-Object -First 1
+    $highestVersion = $sourceVersion
+    if ($installed) {
+        $installedVersion = [version]$installed.Version
+        if ($installedVersion -gt $highestVersion) {
+            $highestVersion = $installedVersion
+        }
+    }
+
+    if ($highestVersion.Revision -ge 65535) {
+        throw "Package revision cannot be incremented: $highestVersion"
+    }
+
+    $nextVersion = [version]::new(
+        $highestVersion.Major,
+        $highestVersion.Minor,
+        $highestVersion.Build,
+        $highestVersion.Revision + 1)
+    $oldVersionText = $identity.Groups['version'].Value
+    $nextVersionText = $nextVersion.ToString()
+    $updatedManifest = $manifest.Replace(
+        "Version=""$oldVersionText""",
+        "Version=""$nextVersionText""")
+    if ($updatedManifest -eq $manifest) {
+        throw "Package identity version could not be updated: $path"
+    }
+
+    [System.IO.File]::WriteAllText(
+        $path,
+        $updatedManifest,
+        [System.Text.UTF8Encoding]::new($false))
+    return $nextVersionText
+}
+
+$packageVersion = $null
 if (-not $SkipPublish) {
+    $packageVersion = Update-PackageVersion $manifestPath
     & dotnet publish $project -c Release -p:Platform=x64 -p:GenerateAppxPackageOnBuild=true --no-restore
     if ($LASTEXITCODE -ne 0) {
         throw "Command Palette publish failed with exit code $LASTEXITCODE"
@@ -97,6 +146,7 @@ if ($RestartCommandPalette) {
 
 [pscustomobject]@{
     Package = $package.FullName
+    PackageVersion = $packageVersion
     PackageFullName = $installed.PackageFullName
     Publisher = $installed.Publisher
     CertificateThumbprint = $certificate.Thumbprint

@@ -17,13 +17,20 @@ public sealed class GHubTrayCommandsProvider : CommandProvider
     }
 
     internal GHubTrayCommandsProvider(TelemetryStatusStore statusStore)
+        : this(statusStore, new GHubTraySettingsStore())
+    {
+    }
+
+    internal GHubTrayCommandsProvider(
+        TelemetryStatusStore statusStore,
+        GHubTraySettingsStore settingsStore)
     {
         _statusStore = statusStore;
         DisplayName = "GHubTray";
         Icon = new IconInfo("\uE7F4");
 
         _page = new GHubTrayPage(_statusStore);
-        _dockBand = new GHubTrayDockBand(_statusStore);
+        _dockBand = new GHubTrayDockBand(_statusStore, settingsStore);
         _statusStore.StatusChanged += StatusStoreOnStatusChanged;
         _commands = [new CommandItem(_page) { Title = DisplayName }];
     }

@@ -1,6 +1,7 @@
 using GHubTray.Core;
 using Microsoft.CommandPalette.Extensions;
 using Microsoft.CommandPalette.Extensions.Toolkit;
+using System.Text.Json.Nodes;
 using Xunit;
 
 namespace GHubTray.CmdPal.Tests;
@@ -27,7 +28,14 @@ public sealed class GHubTrayCmdPalTests
         var items = page.GetItems();
         Assert.Contains(items, item => item.Title == "G703");
         var deviceItem = Assert.Single(items, item => item.Title == "G703");
-        Assert.IsType<NoOpCommand>(deviceItem.Command);
+        var command = Assert.IsType<TelemetryDeviceInfoPage>(deviceItem.Command);
+        Assert.Equal(string.Empty, command.Name);
+        var content = Assert.IsType<FormContent>(Assert.Single(command.GetContent()));
+        var data = Assert.IsType<JsonObject>(JsonNode.Parse(content.DataJson));
+        Assert.Equal("残量は未提供", data["batteryText"]?.GetValue<string>());
+        Assert.Equal("接続中", data["powerText"]?.GetValue<string>());
+        Assert.Contains("${batteryText}", content.TemplateJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("${technicalText}", content.TemplateJson, StringComparison.Ordinal);
         Assert.DoesNotContain(items, item => item.Title == "GHubTrayが起動していません");
         Assert.DoesNotContain(items, item => item.Title == "トレイを開く");
         Assert.DoesNotContain(items, item => item.Title == "今すぐ更新");
@@ -55,17 +63,142 @@ public sealed class GHubTrayCmdPalTests
         await store.RefreshAsync();
 
         var dock = Assert.IsType<GHubTrayDockBand>(Assert.Single(provider.GetDockBands()));
-        var deviceItem = Assert.Single(dock.Items, item => item.Title == "G703");
-        Assert.IsType<NoOpCommand>(deviceItem.Command);
-        Assert.Equal("73% / 接続中", deviceItem.Subtitle);
-        var refresh = Assert.IsType<CommandContextItem>(Assert.Single(deviceItem.MoreCommands));
+        var deviceItem = Assert.Single(dock.Items, item => item.Title == "73%");
+        var command = Assert.IsType<TelemetryDeviceInfoPage>(deviceItem.Command);
+        Assert.Equal(string.Empty, command.Name);
+        Assert.Equal("73%", deviceItem.Title);
+        Assert.Equal("G703", deviceItem.Subtitle);
+        Assert.NotNull(deviceItem.Icon);
+        var refresh = Assert.IsType<CommandContextItem>(
+            Assert.Single(
+                deviceItem.MoreCommands.OfType<CommandContextItem>(),
+                item => item.Title == "更新"));
         Assert.Equal("更新", refresh.Title);
         Assert.DoesNotContain(dock.Items, item => item.Title == "更新");
         Assert.DoesNotContain(dock.Items, item => item.Subtitle?.Contains("GHubTray未起動", StringComparison.Ordinal) == true);
     }
 
     [Fact]
-    public async Task EstimatedVoltageStillAppearsAsPercentageInCommandPalette()
+    public async Task DockSelectionChangesThePersistentDeviceWithoutOpeningInfo()
+    {
+        var reader = new FakeReader(Snapshot(
+            new DeviceTelemetry(
+                "G703 LIGHTSPEED Wireless Gaming Mouse",
+                0xC539,
+                1,
+                0x1004,
+                73,
+                null,
+                PowerState.Discharging,
+                0x01),
+            new DeviceTelemetry(
+                "K380 Wireless Keyboard",
+                0xB342,
+                2,
+                0x1004,
+                15,
+                null,
+                PowerState.Discharging,
+                0x01)));
+        var store = new TelemetryStatusStore(reader);
+        await store.RefreshAsync();
+        var devices = store.GetStatus().Devices;
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"GHubTray.CmdPal.{Guid.NewGuid():N}.json");
+        var settingsStore = new GHubTraySettingsStore(settingsPath);
+
+        try
+        {
+            settingsStore.Save(new GHubTraySettings
+            {
+                DockDeviceId = devices[1].Id
+            });
+            var dock = new GHubTrayDockBand(store, settingsStore);
+
+            var currentItem = Assert.Single(dock.Items);
+            Assert.Equal("15%", currentItem.Title);
+            var selectFirst = Assert.Single(
+                currentItem.MoreCommands.OfType<CommandContextItem>(),
+                item => item.Title == "G703");
+            var command = Assert.IsType<DockDeviceSelectionCommand>(selectFirst.Command);
+
+            command.Invoke();
+
+            Assert.Equal("73%", Assert.Single(dock.Items).Title);
+            Assert.Equal(devices[0].Id, settingsStore.Load().DockDeviceId);
+            Assert.IsType<TelemetryDeviceInfoPage>(Assert.Single(dock.Items).Command);
+        }
+        finally
+        {
+            if (File.Exists(settingsPath))
+            {
+                File.Delete(settingsPath);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task DockContextDeviceItemsAreSelectionCommandsAndInfoCommandIsUnnamed()
+    {
+        var reader = new FakeReader(Snapshot(
+            new DeviceTelemetry(
+                "G703 LIGHTSPEED Wireless Gaming Mouse",
+                0xC539,
+                1,
+                0x1004,
+                73,
+                null,
+                PowerState.Discharging,
+                0x01),
+            new DeviceTelemetry(
+                "K380 Wireless Keyboard",
+                0xB342,
+                2,
+                0x1004,
+                15,
+                null,
+                PowerState.Discharging,
+                0x01)));
+        var store = new TelemetryStatusStore(reader);
+        await store.RefreshAsync();
+        var devices = store.GetStatus().Devices;
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"GHubTray.CmdPal.{Guid.NewGuid():N}.json");
+        var settingsStore = new GHubTraySettingsStore(settingsPath);
+
+        try
+        {
+            settingsStore.Save(new GHubTraySettings
+            {
+                DockDeviceId = devices[1].Id
+            });
+            var dock = new GHubTrayDockBand(store, settingsStore);
+            var currentItem = Assert.Single(dock.Items);
+            var contextItems = currentItem.MoreCommands
+                .OfType<CommandContextItem>()
+                .ToArray();
+
+            Assert.Equal(3, contextItems.Length);
+            Assert.All(
+                contextItems.Where(item => item.Title != "更新"),
+                item => Assert.IsType<DockDeviceSelectionCommand>(item.Command));
+            Assert.Contains(contextItems, item => item.Title == "G703");
+            Assert.Contains(contextItems, item => item.Title == "K380");
+            Assert.Equal(string.Empty, Assert.IsType<TelemetryDeviceInfoPage>(currentItem.Command).Name);
+        }
+        finally
+        {
+            if (File.Exists(settingsPath))
+            {
+                File.Delete(settingsPath);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task EstimatedVoltageUsesPlainPercentageInCommandPalette()
     {
         var reader = new FakeReader(Snapshot(new DeviceTelemetry(
             "G703 LIGHTSPEED Wireless Gaming Mouse",
@@ -85,7 +218,8 @@ public sealed class GHubTrayCmdPalTests
         await store.RefreshAsync();
 
         var deviceItem = Assert.Single(page.GetItems(), item => item.Title == "G703");
-        Assert.Equal("71%（推定） / 接続中", deviceItem.Subtitle);
+        Assert.Equal("71% / 接続中", deviceItem.Subtitle);
+        Assert.DoesNotContain("（推定）", deviceItem.Subtitle, StringComparison.Ordinal);
         Assert.Single(deviceItem.MoreCommands);
     }
 
@@ -104,6 +238,75 @@ public sealed class GHubTrayCmdPalTests
         Assert.Contains(dock.Items, item => item.Subtitle == "デバイス応答なし");
     }
 
+    [Fact]
+    public async Task RefreshCommandWaitsForNewSnapshotAndNotifiesTheSurface()
+    {
+        var reader = new MutableReader(Snapshot(new DeviceTelemetry(
+            "G703 LIGHTSPEED Wireless Gaming Mouse",
+            0xC539,
+            1,
+            0x1004,
+            28,
+            null,
+            PowerState.Discharging,
+            0x01)));
+        var store = new TelemetryStatusStore(reader);
+        await store.RefreshAsync();
+
+        reader.Snapshot = Snapshot(new DeviceTelemetry(
+            "G703 LIGHTSPEED Wireless Gaming Mouse",
+            0xC539,
+            1,
+            0x1004,
+            15,
+            null,
+            PowerState.Discharging,
+            0x01));
+        var notified = false;
+        var command = new TelemetryRefreshCommand(store, () => notified = true);
+
+        command.Invoke();
+
+        Assert.True(notified);
+        Assert.Equal(15, Assert.Single(store.GetStatus().Devices).Percent);
+    }
+
+    [Fact]
+    public async Task DockRefreshUpdatesTheExistingItemInPlace()
+    {
+        var reader = new MutableReader(Snapshot(new DeviceTelemetry(
+            "G703 LIGHTSPEED Wireless Gaming Mouse",
+            0xC539,
+            1,
+            0x1004,
+            28,
+            null,
+            PowerState.Discharging,
+            0x01)));
+        var store = new TelemetryStatusStore(reader);
+        var dock = new GHubTrayDockBand(store);
+        await store.RefreshAsync();
+
+        var originalItem = Assert.Single(dock.Items, item => item.Title == "28%");
+        reader.Snapshot = Snapshot(new DeviceTelemetry(
+            "G703 LIGHTSPEED Wireless Gaming Mouse",
+            0xC539,
+            1,
+            0x1004,
+            15,
+            null,
+            PowerState.Discharging,
+            0x01));
+
+        await store.RefreshAsync();
+        dock.RefreshItems();
+
+        var refreshedItem = Assert.Single(dock.Items, item => item.Title == "15%");
+        Assert.Same(originalItem, refreshedItem);
+        Assert.Equal("G703", refreshedItem.Subtitle);
+        Assert.NotNull(refreshedItem.Icon);
+    }
+
     private static LogitechReadSnapshot Snapshot(params DeviceTelemetry[] devices) =>
         new(1, devices)
         {
@@ -118,5 +321,14 @@ public sealed class GHubTrayCmdPalTests
         public FakeReader(LogitechReadSnapshot snapshot) => _snapshot = snapshot;
 
         public LogitechReadSnapshot ReadSnapshot(CancellationToken cancellationToken = default) => _snapshot;
+    }
+
+    private sealed class MutableReader : ITelemetryReader
+    {
+        public MutableReader(LogitechReadSnapshot snapshot) => Snapshot = snapshot;
+
+        public LogitechReadSnapshot Snapshot { get; set; }
+
+        public LogitechReadSnapshot ReadSnapshot(CancellationToken cancellationToken = default) => Snapshot;
     }
 }

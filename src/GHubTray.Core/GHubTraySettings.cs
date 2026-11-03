@@ -12,6 +12,7 @@ public sealed record GHubTraySettings
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public int RefreshIntervalSeconds { get; init; } = DefaultRefreshIntervalSeconds;
     public bool StartWithWindows { get; init; }
+    public string? DockDeviceId { get; init; }
 
     public TimeSpan RefreshInterval =>
         TimeSpan.FromSeconds(RefreshIntervalSeconds);

@@ -51,11 +51,7 @@ internal sealed class GHubTrayPage : ListPage
         }
 
         items.AddRange(status.Devices.Select(device =>
-            CreateStatusItem(new ListItem(new NoOpCommand
-            {
-                Id = CmdPalDisplayFormatter.DeviceCommandId("ghubtray.device", device),
-                Name = $"{device.Name} の状態"
-            })
+            CreateStatusItem(new ListItem(new TelemetryDeviceInfoPage(_statusStore, device))
             {
                 Title = CmdPalDisplayFormatter.DeviceTitle(device.Name),
                 Subtitle = CmdPalDisplayFormatter.DeviceSubtitle(device)
@@ -77,7 +73,9 @@ internal sealed class GHubTrayPage : ListPage
     {
         item.MoreCommands =
         [
-            new CommandContextItem(new TelemetryRefreshCommand(_statusStore))
+            new CommandContextItem(new TelemetryRefreshCommand(
+                _statusStore,
+                NotifyStatusChanged))
             {
                 Title = "更新",
                 Subtitle = "各機器の残量を再確認"

@@ -27,12 +27,14 @@ public sealed class GHubTraySettingsTests
         store.Save(new GHubTraySettings
         {
             RefreshIntervalSeconds = 1,
-            StartWithWindows = true
+            StartWithWindows = true,
+            DockDeviceId = "device:test"
         });
         var settings = store.Load();
 
         Assert.Equal(GHubTraySettings.MinRefreshIntervalSeconds, settings.RefreshIntervalSeconds);
         Assert.True(settings.StartWithWindows);
+        Assert.Equal("device:test", settings.DockDeviceId);
         Assert.Equal(TimeSpan.FromSeconds(10), settings.RefreshInterval);
         Assert.False(store.HadLoadError);
     }

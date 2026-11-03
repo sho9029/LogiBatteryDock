@@ -12,6 +12,7 @@ namespace GHubTray.App;
 public sealed class SettingsWindow : Window
 {
     private readonly Action<GHubTraySettings> _save;
+    private readonly string? _dockDeviceId;
     private readonly TextBox _refreshIntervalBox;
     private readonly ToggleSwitch _startWithWindowsToggle;
     private readonly TextBlock _errorText;
@@ -24,6 +25,7 @@ public sealed class SettingsWindow : Window
     public SettingsWindow(GHubTraySettings initialSettings, Action<GHubTraySettings> save)
     {
         _save = save;
+        _dockDeviceId = initialSettings.DockDeviceId;
         Title = "GHubTray 設定";
 
         _refreshIntervalBox = new TextBox
@@ -238,7 +240,8 @@ public sealed class SettingsWindow : Window
             var settings = GHubTraySettingsValidator.Normalize(new GHubTraySettings
             {
                 RefreshIntervalSeconds = interval,
-                StartWithWindows = _startWithWindowsToggle.IsOn
+                StartWithWindows = _startWithWindowsToggle.IsOn,
+                DockDeviceId = _dockDeviceId
             });
             _save(settings);
             Close();
