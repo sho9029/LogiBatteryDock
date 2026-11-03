@@ -27,49 +27,43 @@ internal sealed class GHubTrayDockBand : WrappedDockItem
     {
         statusStore.EnsureInitialRefresh();
         var status = statusStore.GetStatus();
-        var items = new List<IListItem>
-        {
-            new ListItem(new TelemetryRefreshCommand(statusStore))
-            {
-                Title = "更新"
-            }
-        };
+        var items = new List<IListItem>();
 
         if (status.Error == "not_checked")
         {
-            items.Add(new ListItem(new NoOpCommand())
+            items.Add(CreateStatusItem(statusStore, new ListItem(new NoOpCommand())
             {
                 Title = "—",
                 Subtitle = "状態を確認中"
-            });
+            }));
             return [.. items];
         }
 
         if (status.Error is not null && status.Devices.Count == 0)
         {
-            items.Add(new ListItem(new NoOpCommand())
+            items.Add(CreateStatusItem(statusStore, new ListItem(new NoOpCommand())
             {
                 Title = "—",
                 Subtitle = "状態を取得できない"
-            });
+            }));
             return [.. items];
         }
 
         if (status.Devices.Count == 0)
         {
-            items.Add(new ListItem(new NoOpCommand())
+            items.Add(CreateStatusItem(statusStore, new ListItem(new NoOpCommand())
             {
                 Title = "—",
                 Subtitle = status.ReceiverCount > 0
                     ? "デバイス応答なし"
                     : "デバイスなし"
-            });
+            }));
             return [.. items];
         }
 
         items.AddRange(status.Devices.Select(device =>
         {
-            return (IListItem)new ListItem(new NoOpCommand
+            return (IListItem)CreateStatusItem(statusStore, new ListItem(new NoOpCommand
             {
                 Id = CmdPalDisplayFormatter.DeviceCommandId("ghubtray.dock.device", device),
                 Name = $"{device.Name} の状態"
@@ -77,9 +71,22 @@ internal sealed class GHubTrayDockBand : WrappedDockItem
             {
                 Title = CmdPalDisplayFormatter.DeviceTitle(device.Name),
                 Subtitle = CmdPalDisplayFormatter.DeviceSubtitle(device)
-            };
+            });
         }));
 
         return [.. items];
+    }
+
+    private static ListItem CreateStatusItem(TelemetryStatusStore statusStore, ListItem item)
+    {
+        item.MoreCommands =
+        [
+            new CommandContextItem(new TelemetryRefreshCommand(statusStore))
+            {
+                Title = "更新",
+                Subtitle = "各機器の残量を再確認"
+            }
+        ];
+        return item;
     }
 }

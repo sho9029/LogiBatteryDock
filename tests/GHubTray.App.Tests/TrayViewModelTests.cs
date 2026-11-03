@@ -27,7 +27,8 @@ public sealed class TrayViewModelTests
         Assert.Equal("残量は未提供", card.BatteryValue);
         Assert.Equal("接続中", card.PowerText);
         Assert.Contains("3960 mV", card.TechnicalText, StringComparison.Ordinal);
-        Assert.Equal("接続中", viewModel.ToolTip.Split(':').Last().Trim());
+        Assert.Contains("GHubTray", viewModel.ToolTip, StringComparison.Ordinal);
+        Assert.Contains("G703: 残量は未提供 / 接続中", viewModel.ToolTip, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -79,7 +80,37 @@ public sealed class TrayViewModelTests
         var card = Assert.Single(viewModel.Devices);
         Assert.Equal("71%", card.BatteryValue);
         Assert.Contains("標準カーブ推定", card.TechnicalText, StringComparison.Ordinal);
-        Assert.EndsWith("71%", viewModel.ToolTip, StringComparison.Ordinal);
+        Assert.Contains("G703: 71% / 接続中", viewModel.ToolTip, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TooltipListsEveryDevice()
+    {
+        var reader = new FakeReader(Snapshot(
+            new DeviceTelemetry(
+                "G703",
+                0xC547,
+                1,
+                0x1004,
+                71,
+                null,
+                PowerState.Discharging,
+                0x01),
+            new DeviceTelemetry(
+                "G915",
+                0xC547,
+                2,
+                0x1004,
+                88,
+                null,
+                PowerState.Charging,
+                0x02)));
+        var viewModel = new TrayViewModel(new TelemetryStatusStore(reader));
+
+        await viewModel.RefreshAsync();
+
+        Assert.Contains("G703: 71% / 接続中", viewModel.ToolTip, StringComparison.Ordinal);
+        Assert.Contains("G915: 88% / 充電中", viewModel.ToolTip, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -18,10 +18,58 @@
         ContextMenuMode="SecondWindow">
         <tb:TaskbarIcon.IconSource>
             <tb:GeneratedIconSource
-                Text="●"
-                FontSize="42"
-                Foreground="#FF60CDFF" />
+                Text="&#xE962;"
+                FontFamily="Segoe MDL2 Assets"
+                FontSize="76"
+                FontWeight="Bold"
+                Foreground="#FFFFFFFF"
+                Background="#FF0A6EBD"
+                BorderBrush="#FF8BE9FD"
+                BorderThickness="5"
+                CornerRadius="24"
+                Size="128" />
         </tb:TaskbarIcon.IconSource>
+
+        <tb:TaskbarIcon.TrayToolTip>
+            <Border
+                Width="320"
+                Padding="10"
+                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                IsHitTestVisible="False">
+                <StackPanel Spacing="6" DataContext="{StaticResource TrayViewModel}">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Spacing="1">
+                            <TextBlock Text="GHubTray" FontSize="13" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding UpdatedText}" FontSize="10" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                        </StackPanel>
+                        <FontIcon Grid.Column="1" Glyph="&#xE962;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Center" />
+                    </Grid>
+                    <ScrollViewer MaxHeight="320" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding Devices}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border
+                                        Margin="0,0,0,3"
+                                        Padding="8,6"
+                                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                        CornerRadius="5"
+                                        ToolTipService.ToolTip="{Binding TechnicalText}">
+                                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                                            <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxLines="1" />
+                                            <TextBlock Grid.Row="1" Text="{Binding PowerText}" FontSize="10" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="1" Grid.RowSpan="2" Text="{Binding BatteryValue}" FontSize="13" FontWeight="SemiBold" MaxWidth="100" TextTrimming="CharacterEllipsis" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </StackPanel>
+            </Border>
+        </tb:TaskbarIcon.TrayToolTip>
 
         <tb:TaskbarIcon.TrayPopup>
             <Border

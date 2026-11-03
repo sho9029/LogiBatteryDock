@@ -83,7 +83,6 @@ public sealed class TrayViewModel : INotifyPropertyChanged
                 return;
             }
 
-            var liveDevice = states.FirstOrDefault(state => !state.IsStale)?.Telemetry;
             if (states.Count > 0)
             {
                 Devices.Clear();
@@ -92,11 +91,7 @@ public sealed class TrayViewModel : INotifyPropertyChanged
                     Devices.Add(ToCard(state));
                 }
 
-                ToolTip = liveDevice is null
-                    ? "GHubTray — デバイス応答なし"
-                    : liveDevice.HasPercentage
-                        ? $"{liveDevice.Name}: {liveDevice.Percent}%"
-                        : $"{liveDevice.Name}: {TelemetryDisplayFormatter.ToPowerText(liveDevice.PowerState)}";
+                ToolTip = BuildToolTip(states);
             }
             else
             {
@@ -141,6 +136,18 @@ public sealed class TrayViewModel : INotifyPropertyChanged
             ReceiverProductId = device.ReceiverProductId,
             DeviceIndex = device.DeviceIndex
         };
+    }
+
+    private static string BuildToolTip(IReadOnlyList<MergedDeviceTelemetry> states)
+    {
+        var lines = states.Select(state =>
+        {
+            var device = state.Telemetry;
+            var display = TelemetryDisplayFormatter.Format(device, state.IsStale);
+            return $"{device.Name}: {display.BatteryText} / {display.PowerText}";
+        });
+
+        return $"GHubTray{Environment.NewLine}{string.Join(Environment.NewLine, lines)}";
     }
 
     private static string FailureSummary(TelemetryStatusDocument status) =>

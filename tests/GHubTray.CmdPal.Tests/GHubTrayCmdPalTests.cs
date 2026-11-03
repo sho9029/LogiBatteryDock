@@ -30,7 +30,10 @@ public sealed class GHubTrayCmdPalTests
         Assert.IsType<NoOpCommand>(deviceItem.Command);
         Assert.DoesNotContain(items, item => item.Title == "GHubTrayが起動していません");
         Assert.DoesNotContain(items, item => item.Title == "トレイを開く");
+        Assert.DoesNotContain(items, item => item.Title == "今すぐ更新");
         Assert.Equal("残量は未提供 / 接続中", deviceItem.Subtitle);
+        var refresh = Assert.IsType<CommandContextItem>(Assert.Single(deviceItem.MoreCommands));
+        Assert.Equal("更新", refresh.Title);
         Assert.DoesNotContain("取得", deviceItem.Subtitle, StringComparison.Ordinal);
     }
 
@@ -55,6 +58,9 @@ public sealed class GHubTrayCmdPalTests
         var deviceItem = Assert.Single(dock.Items, item => item.Title == "G703");
         Assert.IsType<NoOpCommand>(deviceItem.Command);
         Assert.Equal("73% / 接続中", deviceItem.Subtitle);
+        var refresh = Assert.IsType<CommandContextItem>(Assert.Single(deviceItem.MoreCommands));
+        Assert.Equal("更新", refresh.Title);
+        Assert.DoesNotContain(dock.Items, item => item.Title == "更新");
         Assert.DoesNotContain(dock.Items, item => item.Subtitle?.Contains("GHubTray未起動", StringComparison.Ordinal) == true);
     }
 
@@ -80,6 +86,7 @@ public sealed class GHubTrayCmdPalTests
 
         var deviceItem = Assert.Single(page.GetItems(), item => item.Title == "G703");
         Assert.Equal("71%（推定） / 接続中", deviceItem.Subtitle);
+        Assert.Single(deviceItem.MoreCommands);
     }
 
     [Fact]
