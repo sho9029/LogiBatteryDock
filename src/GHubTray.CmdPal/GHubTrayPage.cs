@@ -33,16 +33,16 @@ internal sealed class GHubTrayPage : ListPage
             new ListItem(new TelemetryRefreshCommand(_statusStore))
             {
                 Title = "今すぐ更新",
-                Subtitle = "この拡張自身がHID++を再確認する"
+                Subtitle = "HID++を再確認"
             }
         };
 
-        if (status.Error == "not_checked" || _statusStore.IsRefreshing && status.Devices.Count == 0)
+        if (status.Error == "not_checked")
         {
             items.Add(new ListItem(new NoOpCommand())
             {
                 Title = "状態を確認中",
-                Subtitle = "この拡張の初回取得を待って"
+                Subtitle = "HID++を確認中"
             });
             return [.. items];
         }
@@ -58,14 +58,14 @@ internal sealed class GHubTrayPage : ListPage
         }
 
         items.AddRange(status.Devices.Select(device =>
-            new ListItem(new CopyTextCommand(FormatCopyText(device))
+            new ListItem(new NoOpCommand
             {
-                Id = $"ghubtray.device.{device.Id}",
-                Name = $"{device.Name} の状態をコピー"
+                Id = CmdPalDisplayFormatter.DeviceCommandId("ghubtray.device", device),
+                Name = $"{device.Name} の状態"
             })
             {
-                Title = device.Name,
-                Subtitle = FormatSubtitle(device)
+                Title = CmdPalDisplayFormatter.DeviceTitle(device.Name),
+                Subtitle = CmdPalDisplayFormatter.DeviceSubtitle(device)
             }));
 
         if (status.Devices.Count == 0)
@@ -79,16 +79,4 @@ internal sealed class GHubTrayPage : ListPage
 
         return [.. items];
     }
-
-    private static string FormatSubtitle(TelemetryDeviceStatus device)
-    {
-        var stale = device.IsStale ? " / 最終取得値" : string.Empty;
-        var voltage = device.Millivolts is int millivolts
-            ? $" / {millivolts} mV"
-            : string.Empty;
-        return $"{device.BatteryText} / {device.PowerText}{voltage}{stale} / 取得 {device.ObservedAt.ToLocalTime():HH:mm:ss}";
-    }
-
-    private static string FormatCopyText(TelemetryDeviceStatus device) =>
-        $"{device.Name}: {device.BatteryText} / {device.PowerText} / {device.TechnicalText}";
 }

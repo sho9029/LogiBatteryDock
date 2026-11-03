@@ -90,7 +90,7 @@ public sealed class TelemetryStatusStore
                 () => _reader.ReadSnapshot(cancellationToken),
                 cancellationToken).ConfigureAwait(false);
             var states = _stateMerger.Merge(snapshot);
-            SetStatus(TelemetryIpcProtocol.CreateStatus(snapshot, states), states);
+            SetStatus(TelemetryStatusDocumentFactory.CreateStatus(snapshot, states), states);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

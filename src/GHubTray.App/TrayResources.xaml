@@ -25,41 +25,62 @@
 
         <tb:TaskbarIcon.TrayPopup>
             <Border
-                Width="360"
-                Padding="20"
+                Width="340"
+                Padding="12"
                 Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
-                CornerRadius="12">
-                <StackPanel Spacing="14" DataContext="{StaticResource TrayViewModel}">
+                CornerRadius="10">
+                <StackPanel Spacing="8" DataContext="{StaticResource TrayViewModel}">
                     <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Text="GHubTray" FontSize="16" FontWeight="SemiBold" />
-                        <Button Grid.Column="1" Command="{StaticResource RefreshCommand}" ToolTipService.ToolTip="更新" AutomationProperties.Name="更新">
-                            <FontIcon Glyph="&#xE72C;" FontSize="13" />
+                        <StackPanel Spacing="1">
+                            <TextBlock Text="GHubTray" FontSize="15" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding UpdatedText}" FontSize="10" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Command="{StaticResource RefreshCommand}" ToolTipService.ToolTip="更新" AutomationProperties.Name="更新" Padding="8,4">
+                            <FontIcon Glyph="&#xE72C;" FontSize="12" />
                         </Button>
                     </Grid>
-                    <ScrollViewer MaxHeight="520" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <ScrollViewer MaxHeight="360" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <ItemsControl ItemsSource="{Binding Devices}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Border
-                                        Margin="0,0,0,8"
-                                        Padding="16"
+                                        Margin="0,0,0,4"
+                                        Padding="10,8"
                                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                        CornerRadius="8"
+                                        CornerRadius="6"
+                                        ToolTipService.ToolTip="{Binding TechnicalText}"
                                         AutomationProperties.Name="{Binding Name}">
-                                        <StackPanel Spacing="7">
-                                            <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" />
-                                            <TextBlock Text="{Binding BatteryValue}" FontSize="25" FontWeight="SemiBold" />
-                                            <TextBlock Text="{Binding PowerText}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                            <TextBlock Text="{Binding TechnicalText}" FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}" TextWrapping="Wrap" />
-                                        </StackPanel>
+                                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                                            <TextBlock
+                                                Text="{Binding Name}"
+                                                FontSize="13"
+                                                FontWeight="SemiBold"
+                                                TextTrimming="CharacterEllipsis"
+                                                MaxLines="1" />
+                                            <TextBlock
+                                                Grid.Row="1"
+                                                Text="{Binding PowerText}"
+                                                FontSize="11"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                TextTrimming="CharacterEllipsis" />
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                Grid.RowSpan="2"
+                                                Text="{Binding BatteryValue}"
+                                                FontSize="15"
+                                                FontWeight="SemiBold"
+                                                MaxWidth="110"
+                                                TextTrimming="CharacterEllipsis"
+                                                HorizontalAlignment="Right"
+                                                VerticalAlignment="Center" />
+                                        </Grid>
                                     </Border>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </ScrollViewer>
-                    <TextBlock Text="{Binding UpdatedText}" FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}" HorizontalAlignment="Right" />
                 </StackPanel>
             </Border>
         </tb:TaskbarIcon.TrayPopup>

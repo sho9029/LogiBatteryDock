@@ -1,5 +1,6 @@
 using GHubTray.Core;
 using Microsoft.CommandPalette.Extensions;
+using Microsoft.CommandPalette.Extensions.Toolkit;
 using Xunit;
 
 namespace GHubTray.CmdPal.Tests;
@@ -10,7 +11,7 @@ public sealed class GHubTrayCmdPalTests
     public async Task PageReadsDeviceWhenTrayProcessIsAbsent()
     {
         var reader = new FakeReader(Snapshot(new DeviceTelemetry(
-            "G703",
+            "G703 LIGHTSPEED Wireless Gaming Mouse w/ HERO",
             0xC547,
             1,
             0x1001,
@@ -25,16 +26,19 @@ public sealed class GHubTrayCmdPalTests
 
         var items = page.GetItems();
         Assert.Contains(items, item => item.Title == "G703");
+        var deviceItem = Assert.Single(items, item => item.Title == "G703");
+        Assert.IsType<NoOpCommand>(deviceItem.Command);
         Assert.DoesNotContain(items, item => item.Title == "GHubTrayが起動していません");
         Assert.DoesNotContain(items, item => item.Title == "トレイを開く");
-        Assert.Contains(items, item => item.Subtitle?.Contains("残量は未提供", StringComparison.Ordinal) == true);
+        Assert.Equal("残量は未提供 / 接続中", deviceItem.Subtitle);
+        Assert.DoesNotContain("取得", deviceItem.Subtitle, StringComparison.Ordinal);
     }
 
     [Fact]
     public async Task DockUsesTheSameIndependentStatusStore()
     {
         var reader = new FakeReader(Snapshot(new DeviceTelemetry(
-            "Keyboard",
+            "G703 LIGHTSPEED Wireless Gaming Mouse w/ HERO",
             0xC539,
             2,
             0x1004,
@@ -48,8 +52,25 @@ public sealed class GHubTrayCmdPalTests
         await store.RefreshAsync();
 
         var dock = Assert.IsType<GHubTrayDockBand>(Assert.Single(provider.GetDockBands()));
-        Assert.Contains(dock.Items, item => item.Title == "Keyboard");
+        var deviceItem = Assert.Single(dock.Items, item => item.Title == "G703");
+        Assert.IsType<NoOpCommand>(deviceItem.Command);
+        Assert.Equal("73% / 接続中", deviceItem.Subtitle);
         Assert.DoesNotContain(dock.Items, item => item.Subtitle?.Contains("GHubTray未起動", StringComparison.Ordinal) == true);
+    }
+
+    [Fact]
+    public async Task EmptyReceiverResultDoesNotRemainInLoadingState()
+    {
+        var store = new TelemetryStatusStore(new FakeReader(new LogitechReadSnapshot(1, [])
+        {
+            ReceiverProductIds = [0xC539]
+        }));
+        var provider = new GHubTrayCommandsProvider(store);
+
+        await store.RefreshAsync();
+
+        var dock = Assert.IsType<GHubTrayDockBand>(Assert.Single(provider.GetDockBands()));
+        Assert.Contains(dock.Items, item => item.Subtitle == "デバイス応答なし");
     }
 
     private static LogitechReadSnapshot Snapshot(params DeviceTelemetry[] devices) =>

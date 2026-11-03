@@ -6,7 +6,7 @@
   xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
   IgnorableNamespaces="uap uap3 rescap">
-  <Identity Name="GHubTrayCmdPal" Publisher="CN=GHubTray" Version="0.1.0.0" />
+  <Identity Name="GHubTrayCmdPal" Publisher="CN=GHubTray" Version="0.1.0.5" />
   <Properties>
     <DisplayName>GHubTray Command Palette</DisplayName>
     <PublisherDisplayName>GHubTray</PublisherDisplayName>
@@ -22,6 +22,7 @@
       <uap:VisualElements
         DisplayName="GHubTray Command Palette"
         Description="Logitechデバイスの状態"
+        AppListEntry="none"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">

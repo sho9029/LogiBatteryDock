@@ -35,7 +35,7 @@ internal sealed class GHubTrayDockBand : WrappedDockItem
             }
         };
 
-        if (status.Error == "not_checked" || statusStore.IsRefreshing && status.Devices.Count == 0)
+        if (status.Error == "not_checked")
         {
             items.Add(new ListItem(new NoOpCommand())
             {
@@ -69,24 +69,14 @@ internal sealed class GHubTrayDockBand : WrappedDockItem
 
         items.AddRange(status.Devices.Select(device =>
         {
-            var voltage = device.Millivolts is int millivolts
-                ? $" / {millivolts} mV"
-                : string.Empty;
-            var subtitle = $"{device.BatteryText} / {device.PowerText}{voltage}";
-            if (device.IsStale)
+            return (IListItem)new ListItem(new NoOpCommand
             {
-                subtitle += " / 最終取得値";
-            }
-
-            return (IListItem)new ListItem(new CopyTextCommand(
-                $"{device.Name}: {device.BatteryText} / {device.PowerText} / {device.TechnicalText}")
-            {
-                Id = $"ghubtray.dock.device.{device.Id}",
-                Name = $"{device.Name} の状態をコピー"
+                Id = CmdPalDisplayFormatter.DeviceCommandId("ghubtray.dock.device", device),
+                Name = $"{device.Name} の状態"
             })
             {
-                Title = device.Name,
-                Subtitle = subtitle
+                Title = CmdPalDisplayFormatter.DeviceTitle(device.Name),
+                Subtitle = CmdPalDisplayFormatter.DeviceSubtitle(device)
             };
         }));
 
