@@ -6,9 +6,9 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\")).Path
-$project = Join-Path $repoRoot "src\GHubTray.CmdPal\GHubTray.CmdPal.csproj"
-$manifestPath = Join-Path $repoRoot "src\GHubTray.CmdPal\Package.appxmanifest"
-$packagesRoot = Join-Path $repoRoot "src\GHubTray.CmdPal\AppPackages"
+$project = Join-Path $repoRoot "src\LogiBatteryDock.CmdPal\LogiBatteryDock.CmdPal.csproj"
+$manifestPath = Join-Path $repoRoot "src\LogiBatteryDock.CmdPal\Package.appxmanifest"
+$packagesRoot = Join-Path $repoRoot "src\LogiBatteryDock.CmdPal\AppPackages"
 
 function Update-PackageVersion([string]$path) {
     $manifest = Get-Content -LiteralPath $path -Raw
@@ -20,7 +20,7 @@ function Update-PackageVersion([string]$path) {
     }
 
     $sourceVersion = [version]$identity.Groups['version'].Value
-    $installed = Get-AppxPackage -Name "GHubTrayCmdPal" -ErrorAction SilentlyContinue |
+    $installed = Get-AppxPackage -Name "LogiBatteryDockCmdPal" -ErrorAction SilentlyContinue |
         Sort-Object Version -Descending |
         Select-Object -First 1
     $highestVersion = $sourceVersion
@@ -80,8 +80,8 @@ if (-not $signtool) {
     throw "The x64 Windows SDK signtool.exe was not found"
 }
 
-$subject = "CN=GHubTray"
-$friendlyName = "GHubTray Development Signing"
+$subject = "CN=LogiBatteryDock"
+$friendlyName = "LogiBatteryDock Development Signing"
 $minimumLifetime = (Get-Date).AddDays(7)
 $certificate = Get-ChildItem -LiteralPath "Cert:\CurrentUser\My" |
     Where-Object {
@@ -106,10 +106,10 @@ if (-not $certificate) {
 }
 
 $packageDirectory = $package.Directory.FullName
-$certificatePath = Join-Path $packageDirectory "GHubTray.cer"
+$certificatePath = Join-Path $packageDirectory "LogiBatteryDock.cer"
 Export-Certificate -Cert $certificate -FilePath $certificatePath -Force | Out-Null
 
-& $signtool.FullName sign /fd SHA256 /sha1 $certificate.Thumbprint /d "GHubTray Command Palette" $package.FullName
+& $signtool.FullName sign /fd SHA256 /sha1 $certificate.Thumbprint /d "LogiBatteryDock Command Palette" $package.FullName
 if ($LASTEXITCODE -ne 0) {
     throw "MSIX signing failed with exit code $LASTEXITCODE"
 }
@@ -131,9 +131,9 @@ if ($LASTEXITCODE -ne 0) {
     throw "AppX installation failed with exit code $LASTEXITCODE"
 }
 
-$installed = Get-AppxPackage -Name "GHubTrayCmdPal" | Select-Object -First 1
+$installed = Get-AppxPackage -Name "LogiBatteryDockCmdPal" | Select-Object -First 1
 if (-not $installed -or $installed.Status -ne "Ok") {
-    throw "GHubTrayCmdPal was not registered successfully"
+    throw "LogiBatteryDockCmdPal was not registered successfully"
 }
 
 if ($RestartCommandPalette) {
@@ -141,7 +141,7 @@ if ($RestartCommandPalette) {
     Start-Sleep -Milliseconds 700
     $commandPalette = (Get-AppxPackage -Name "Microsoft.CommandPalette").InstallLocation |
         Join-Path -ChildPath "Microsoft.CmdPal.UI.exe"
-    Start-Process -FilePath $commandPalette -ArgumentList "x-cmdpal://background/" | Out-Null
+    Start-Process -FilePath $commandPalette -ArgumentList "x-cmdpal://background/" -WindowStyle Hidden | Out-Null
 }
 
 [pscustomobject]@{

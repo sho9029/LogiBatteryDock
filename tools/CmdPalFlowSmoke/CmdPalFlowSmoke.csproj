@@ -4,11 +4,11 @@
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PlatformTarget>x64</PlatformTarget>
-    <AssemblyName>GHubTray.CmdPal.FlowSmoke</AssemblyName>
+    <AssemblyName>LogiBatteryDock.CmdPal.FlowSmoke</AssemblyName>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../src/GHubTray.CmdPal/GHubTray.CmdPal.csproj" />
+    <ProjectReference Include="../../src/LogiBatteryDock.CmdPal/LogiBatteryDock.CmdPal.csproj" />
   </ItemGroup>
 </Project>

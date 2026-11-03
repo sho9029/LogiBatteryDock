@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 $project = Join-Path $PSScriptRoot 'CmdPalFlowSmoke\CmdPalFlowSmoke.csproj'
 & dotnet build $project -c Release
 if ($LASTEXITCODE -ne 0) { throw 'Flow smoke build failed' }
-$executable = Join-Path $PSScriptRoot 'CmdPalFlowSmoke\bin\Release\net10.0-windows10.0.26100.0\win-x64\GHubTray.CmdPal.FlowSmoke.exe'
+$executable = Join-Path $PSScriptRoot 'CmdPalFlowSmoke\bin\Release\net10.0-windows10.0.26100.0\win-x64\LogiBatteryDock.CmdPal.FlowSmoke.exe'
 $outputRoot = Join-Path $PSScriptRoot ('obj\flow-smoke-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $outputRoot | Out-Null
 
@@ -34,7 +34,7 @@ foreach ($fault in @('disconnected-host', 'blocked-host')) {
         # extension, device, CmdPal process, package, or registry entry is changed.
         foreach ($suffix in @('release', 'done')) {
             $signal = $null
-            if ([System.Threading.EventWaitHandle]::TryOpenExisting("Local\GHubTrayFlowSmoke-$run-$suffix", [ref]$signal)) {
+            if ([System.Threading.EventWaitHandle]::TryOpenExisting("Local\LogiBatteryDockFlowSmoke-$run-$suffix", [ref]$signal)) {
                 $signal.Set() | Out-Null
                 $signal.Dispose()
             }

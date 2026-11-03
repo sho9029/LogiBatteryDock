@@ -18,9 +18,9 @@ get_exit_code.restype = wt.BOOL
 
 
 root = Path(__file__).resolve().parents[1]
-exe = root / "src" / "GHubTray.App" / "bin" / "Release" / "net10.0-windows10.0.19041.0" / "win-x64" / "GHubTray.App.exe"
+exe = root / "src" / "LogiBatteryDock.App" / "bin" / "Release" / "net10.0-windows10.0.19041.0" / "win-x64" / "LogiBatteryDock.App.exe"
 before = current_desktop_name()
-duration = float(os.environ.get("GHUBTRAY_SMOKE_SECONDS", "3"))
+duration = float(os.environ.get("LOGIBATTERYDOCK_SMOKE_SECONDS", "3"))
 
 with HiddenDesktop() as desktop:
     process = desktop.spawn(exe, cwd=exe.parent)

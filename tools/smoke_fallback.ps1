@@ -3,7 +3,7 @@ param(
 )
 
 $probe = [System.IO.Path]::GetFullPath(
-    (Join-Path $PSScriptRoot '..\src\GHubTray.Probe\bin\Release\net10.0-windows10.0.19041.0\GHubTray.Probe.exe'))
+    (Join-Path $PSScriptRoot '..\src\LogiBatteryDock.Probe\bin\Release\net10.0-windows10.0.19041.0\LogiBatteryDock.Probe.exe'))
 if (-not (Test-Path -LiteralPath $probe)) {
     throw "Release probe was not found: $probe"
 }

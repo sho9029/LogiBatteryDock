@@ -2,13 +2,15 @@ param(
     [int]$StartupWaitMilliseconds = 1000
 )
 
+$ErrorActionPreference = 'Stop'
+
 $exe = [System.IO.Path]::GetFullPath(
-    (Join-Path $PSScriptRoot '..\src\GHubTray.App\bin\Release\net10.0-windows10.0.19041.0\win-x64\GHubTray.App.exe'))
+    (Join-Path $PSScriptRoot '..\src\LogiBatteryDock.App\bin\Release\net10.0-windows10.0.19041.0\win-x64\LogiBatteryDock.App.exe'))
 if (-not (Test-Path -LiteralPath $exe)) {
     throw "Release app was not found: $exe"
 }
 
-$process = Start-Process -FilePath $exe -PassThru
+$process = Start-Process -FilePath $exe -WindowStyle Hidden -PassThru
 
 function Invoke-Ipc([string]$command) {
     $pipe = $null
@@ -17,7 +19,7 @@ function Invoke-Ipc([string]$command) {
     try {
         $pipe = [System.IO.Pipes.NamedPipeClientStream]::new(
             '.',
-            'GHubTray.Status.v1',
+            'LogiBatteryDock.Status.v1',
             [System.IO.Pipes.PipeDirection]::InOut,
             [System.IO.Pipes.PipeOptions]::Asynchronous)
         $pipe.Connect(3000)

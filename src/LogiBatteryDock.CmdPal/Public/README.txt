@@ -1,0 +1,1 @@
+LogiBatteryDock Command Palette extension.

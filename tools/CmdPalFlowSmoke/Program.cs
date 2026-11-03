@@ -1,8 +1,8 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using GHubTray.Core;
-using GHubTray.CmdPal;
+using LogiBatteryDock.Core;
+using LogiBatteryDock.CmdPal;
 using Microsoft.CommandPalette.Extensions;
 using Shmuelie.WinRTServer;
 using Shmuelie.WinRTServer.CsWinRT;
@@ -11,9 +11,9 @@ using WinRT;
 
 var mode = args[0];
 var run = args[1];
-using var done = new EventWaitHandle(false, EventResetMode.ManualReset, $@"Local\GHubTrayFlowSmoke-{run}-done");
-using var entered = new EventWaitHandle(false, EventResetMode.ManualReset, $@"Local\GHubTrayFlowSmoke-{run}-entered");
-using var release = new EventWaitHandle(false, EventResetMode.ManualReset, $@"Local\GHubTrayFlowSmoke-{run}-release");
+using var done = new EventWaitHandle(false, EventResetMode.ManualReset, $@"Local\LogiBatteryDockFlowSmoke-{run}-done");
+using var entered = new EventWaitHandle(false, EventResetMode.ManualReset, $@"Local\LogiBatteryDockFlowSmoke-{run}-entered");
+using var release = new EventWaitHandle(false, EventResetMode.ManualReset, $@"Local\LogiBatteryDockFlowSmoke-{run}-release");
 
 if (mode == "server")
 {
@@ -88,15 +88,15 @@ finally
 public sealed class SmokeExtension : IExtension
 {
     private readonly EventWaitHandle _done;
-    private readonly GHubTrayCommandsProvider _provider;
+    private readonly LogiBatteryDockCommandsProvider _provider;
 
     public SmokeExtension(EventWaitHandle done)
     {
         _done = done;
         var store = new TelemetryStatusStore(new SmokeReader());
         store.RefreshAsync().GetAwaiter().GetResult();
-        _provider = new(store, new GHubTraySettingsStore(), TimeSpan.FromHours(1));
-        ((GHubTrayDockBand)_provider.GetDockBands()[0]).Notifications.Trace = message => Console.WriteLine("dock." + message);
+        _provider = new(store, new LogiBatteryDockSettingsStore(), TimeSpan.FromHours(1));
+        ((LogiBatteryDockBand)_provider.GetDockBands()[0]).Notifications.Trace = message => Console.WriteLine("dock." + message);
     }
 
     public object? GetProvider(ProviderType providerType) => _provider;
