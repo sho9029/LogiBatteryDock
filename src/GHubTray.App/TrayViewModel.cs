@@ -94,7 +94,7 @@ public sealed class TrayViewModel : INotifyPropertyChanged
 
                 ToolTip = liveDevice is null
                     ? "GHubTray — デバイス応答なし"
-                    : liveDevice.IsExactPercentage
+                    : liveDevice.HasPercentage
                         ? $"{liveDevice.Name}: {liveDevice.Percent}%"
                         : $"{liveDevice.Name}: {TelemetryDisplayFormatter.ToPowerText(liveDevice.PowerState)}";
             }

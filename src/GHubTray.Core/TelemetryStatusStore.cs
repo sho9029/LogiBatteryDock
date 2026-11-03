@@ -17,7 +17,7 @@ public sealed class TelemetryStatusStore
 
     public TelemetryStatusStore(ITelemetryReader? reader = null)
     {
-        _reader = reader ?? new LogitechDeviceReader();
+        _reader = reader ?? new GHubAwareTelemetryReader();
     }
 
     public event EventHandler? StatusChanged;

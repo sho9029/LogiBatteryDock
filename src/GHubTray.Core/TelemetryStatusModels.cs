@@ -20,7 +20,11 @@ public sealed record TelemetryDeviceStatus(
     PowerState PowerState,
     DateTimeOffset ObservedAt,
     int ReceiverProductId,
-    byte DeviceIndex);
+    byte DeviceIndex)
+{
+    public TelemetrySource Source { get; init; } = TelemetrySource.NativeHidpp;
+    public bool IsEstimatedPercentage { get; init; }
+}
 
 public sealed record TelemetryFailureStatus(
     int ReceiverProductId,

@@ -58,6 +58,31 @@ public sealed class TrayViewModelTests
     }
 
     [Fact]
+    public async Task VoltageEstimateAppearsInCardAndTooltip()
+    {
+        var reader = new FakeReader(Snapshot(new DeviceTelemetry(
+            "G703",
+            0xC547,
+            1,
+            0x1001,
+            71,
+            3927,
+            PowerState.Discharging,
+            0x01)
+        {
+            Source = TelemetrySource.NativeVoltageEstimate
+        }));
+        var viewModel = new TrayViewModel(new TelemetryStatusStore(reader));
+
+        await viewModel.RefreshAsync();
+
+        var card = Assert.Single(viewModel.Devices);
+        Assert.Equal("71%", card.BatteryValue);
+        Assert.Contains("標準カーブ推定", card.TechnicalText, StringComparison.Ordinal);
+        Assert.EndsWith("71%", viewModel.ToolTip, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ReaderFailureIsShownAsFailureCard()
     {
         var viewModel = new TrayViewModel(new TelemetryStatusStore(new ThrowingReader()));

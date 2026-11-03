@@ -61,6 +61,31 @@ public sealed class TelemetryStatusStoreTests
     }
 
     [Fact]
+    public async Task EstimatedPercentageProvenanceIsExposedInStatus()
+    {
+        var reader = new FakeReader(Snapshot(new DeviceTelemetry(
+            "Mouse",
+            0xC539,
+            1,
+            0x1001,
+            70,
+            3921,
+            PowerState.Discharging,
+            0x01)
+        {
+            Source = TelemetrySource.NativeVoltageEstimate
+        }));
+        var store = new TelemetryStatusStore(reader);
+
+        await store.RefreshAsync();
+
+        var device = Assert.Single(store.GetStatus().Devices);
+        Assert.Equal("70%", device.BatteryText);
+        Assert.Equal(TelemetrySource.NativeVoltageEstimate, device.Source);
+        Assert.True(device.IsEstimatedPercentage);
+    }
+
+    [Fact]
     public async Task ConcurrentRefreshesShareOneRead()
     {
         var reader = new FakeReader(Snapshot(), TimeSpan.FromMilliseconds(50));

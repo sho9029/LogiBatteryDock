@@ -59,6 +59,30 @@ public sealed class GHubTrayCmdPalTests
     }
 
     [Fact]
+    public async Task EstimatedVoltageStillAppearsAsPercentageInCommandPalette()
+    {
+        var reader = new FakeReader(Snapshot(new DeviceTelemetry(
+            "G703 LIGHTSPEED Wireless Gaming Mouse",
+            0xC539,
+            1,
+            0x1001,
+            71,
+            3927,
+            PowerState.Discharging,
+            0x01)
+        {
+            Source = TelemetrySource.NativeVoltageEstimate
+        }));
+        var store = new TelemetryStatusStore(reader);
+        var page = new GHubTrayPage(store);
+
+        await store.RefreshAsync();
+
+        var deviceItem = Assert.Single(page.GetItems(), item => item.Title == "G703");
+        Assert.Equal("71%（推定） / 接続中", deviceItem.Subtitle);
+    }
+
+    [Fact]
     public async Task EmptyReceiverResultDoesNotRemainInLoadingState()
     {
         var store = new TelemetryStatusStore(new FakeReader(new LogitechReadSnapshot(1, [])

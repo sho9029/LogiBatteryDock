@@ -30,7 +30,11 @@ public static class TelemetryStatusDocumentFactory
                 telemetry.PowerState,
                 telemetry.ObservedAt,
                 telemetry.ReceiverProductId,
-                telemetry.DeviceIndex);
+                telemetry.DeviceIndex)
+            {
+                Source = telemetry.Source,
+                IsEstimatedPercentage = telemetry.IsEstimatedPercentage
+            };
         }).ToArray();
 
         var failures = snapshot.Failures

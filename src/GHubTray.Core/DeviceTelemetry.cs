@@ -9,6 +9,13 @@ public enum PowerState
     ExternalPower
 }
 
+public enum TelemetrySource
+{
+    NativeHidpp,
+    GHubAgent,
+    NativeVoltageEstimate
+}
+
 public sealed record DeviceTelemetry(
     string Name,
     int ReceiverProductId,
@@ -20,7 +27,15 @@ public sealed record DeviceTelemetry(
     byte RawStatus)
 {
     public string ReceiverKey { get; init; } = string.Empty;
-    public bool IsExactPercentage => Percent is not null && BatteryFeature is 0x1000 or 0x1004;
+    public TelemetrySource Source { get; init; } = TelemetrySource.NativeHidpp;
+    public string? SourceDeviceId { get; init; }
+    public bool IsEstimatedPercentage => Percent is not null
+        && Source is TelemetrySource.NativeVoltageEstimate;
+    public bool IsExactPercentage => Percent is not null
+        && !IsEstimatedPercentage
+        && (Source is TelemetrySource.GHubAgent || BatteryFeature is 0x1000 or 0x1004);
+    public bool HasPercentage => Percent is not null
+        && (IsExactPercentage || IsEstimatedPercentage);
     public DateTimeOffset ObservedAt { get; init; } = DateTimeOffset.UtcNow;
 }
 

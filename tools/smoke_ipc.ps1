@@ -74,8 +74,11 @@ try {
 
     $devices = @($refreshed.status.devices)
     foreach ($device in $devices) {
-        if ($device.batteryText -eq '残量は未提供' -and $null -ne $device.percent) {
-            throw "voltage-only telemetry unexpectedly contains a percentage: $($device.name)"
+        if ($device.source -in @('GHubAgent', 'NativeVoltageEstimate') -and $null -eq $device.percent) {
+            throw "percentage source did not contain a percentage: $($device.name)"
+        }
+        if ($device.source -eq 'NativeVoltageEstimate' -and $device.batteryText -notmatch '%') {
+            throw "voltage fallback did not format a percentage: $($device.name)"
         }
     }
 
@@ -90,6 +93,8 @@ try {
                 Percent = $_.percent
                 Millivolts = $_.millivolts
                 PowerState = $_.powerState
+                Source = $_.source
+                IsEstimatedPercentage = $_.isEstimatedPercentage
             }
         }
     } | ConvertTo-Json -Depth 5

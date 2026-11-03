@@ -28,7 +28,10 @@ internal static class CmdPalDisplayFormatter
 
     public static string DeviceSubtitle(TelemetryDeviceStatus device)
     {
-        var subtitle = $"{device.BatteryText} / {device.PowerText}";
+        var batteryText = device.IsEstimatedPercentage
+            ? $"{device.BatteryText}（推定）"
+            : device.BatteryText;
+        var subtitle = $"{batteryText} / {device.PowerText}";
         return device.IsStale
             ? $"{subtitle} / 最終取得値"
             : subtitle;

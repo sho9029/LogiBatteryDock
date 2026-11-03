@@ -30,6 +30,34 @@ public sealed class TelemetryDisplayFormatterTests
         Assert.Contains("HID++ 0x1004", display.TechnicalText);
     }
 
+    [Fact]
+    public void GHubAgentPercentageIsDisplayedAsReported()
+    {
+        var display = TelemetryDisplayFormatter.Format(
+            Telemetry(0, percent: 71, millivolts: null) with
+            {
+                Source = TelemetrySource.GHubAgent
+            });
+
+        Assert.Equal("71%", display.BatteryText);
+        Assert.Equal("接続中", display.PowerText);
+        Assert.Contains("G HUB 連携", display.TechnicalText);
+    }
+
+    [Fact]
+    public void VoltageEstimateShowsPercentageAndItsProvenance()
+    {
+        var display = TelemetryDisplayFormatter.Format(
+            Telemetry(0x1001, percent: 71, millivolts: 3927) with
+            {
+                Source = TelemetrySource.NativeVoltageEstimate
+            });
+
+        Assert.Equal("71%", display.BatteryText);
+        Assert.Contains("標準カーブ推定", display.TechnicalText);
+        Assert.Contains("3927 mV", display.TechnicalText);
+    }
+
     private static DeviceTelemetry Telemetry(ushort feature, int? percent, int? millivolts) =>
         new(
             "Test device",
